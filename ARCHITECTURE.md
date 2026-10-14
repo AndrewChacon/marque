@@ -167,6 +167,15 @@ independent of CIDR/domain matching — an in-scope IP checked after the
 window closes is still a denial, with `Reason` saying so explicitly
 rather than looking like an ordinary scope miss.
 
+### `engagement.client` (optional)
+
+A free-text client name (e.g. `"Acme Corp"`), surfaced in `Scope.Client`.
+Purely cosmetic — never validated beyond trimming, never required.
+Added in Stage 2 so the proxy's startup banner and `marque validate`'s
+output could show "acme-2026q4 (Acme Corp)" per `docs/UX_FLOW.md`'s
+mockups, which had always shown a client name the schema had no field
+for.
+
 ## `pkg/audit` — public API
 
 ```go

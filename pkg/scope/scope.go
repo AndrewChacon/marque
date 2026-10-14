@@ -89,6 +89,9 @@ func parseMode(raw string) (Mode, error) {
 type Scope struct {
 	// Name is the engagement name from the scope file, e.g. "acme-2026q4".
 	Name string
+	// Client is the client name from the scope file, e.g. "Acme Corp".
+	// Optional — never required, never validated beyond trimming.
+	Client string
 	// Start is the beginning of the authorized engagement window.
 	Start time.Time
 	// End is the end of the authorized engagement window.
@@ -112,9 +115,10 @@ type Scope struct {
 
 type file struct {
 	Engagement struct {
-		Name  string `yaml:"name"`
-		Start string `yaml:"start"`
-		End   string `yaml:"end"`
+		Name   string `yaml:"name"`
+		Client string `yaml:"client"`
+		Start  string `yaml:"start"`
+		End    string `yaml:"end"`
 	} `yaml:"engagement"`
 	Scope struct {
 		Include []string `yaml:"include"`
@@ -167,7 +171,7 @@ func Parse(data []byte) (*Scope, error) {
 		return nil, err
 	}
 
-	s := &Scope{Name: name, Start: start, End: end, Mode: mode}
+	s := &Scope{Name: name, Client: strings.TrimSpace(f.Engagement.Client), Start: start, End: end, Mode: mode}
 
 	for _, raw := range f.Scope.Include {
 		trimmed, err := s.addRule(raw, true)

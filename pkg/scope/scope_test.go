@@ -382,6 +382,29 @@ scope:
 	assert.Equal(t, []string{"10.0.5.0/24", "db.internal.acme.com"}, s.ExcludeRules)
 }
 
+func TestParse_ClientIsOptional(t *testing.T) {
+	doc := fmt.Sprintf(`
+engagement:
+  name: test
+  client: "  Acme Corp  "
+  start: %s
+  end: %s
+scope:
+  include:
+    - 10.0.0.0/16
+`, time.Now().Add(-time.Hour).Format(time.RFC3339), time.Now().Add(time.Hour).Format(time.RFC3339))
+	s, err := Parse([]byte(doc))
+	require.NoError(t, err)
+	assert.Equal(t, "Acme Corp", s.Client, "client is trimmed like other fields")
+
+	s2 := mustScope(t, `
+scope:
+  include:
+    - 10.0.0.0/16
+`)
+	assert.Equal(t, "", s2.Client, "omitting client must not be an error")
+}
+
 func TestLoad_FileNotFound(t *testing.T) {
 	_, err := Load("/nonexistent/path/scope.yaml")
 	require.Error(t, err)
