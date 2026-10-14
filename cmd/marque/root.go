@@ -19,5 +19,6 @@ precisely, whether a target is authorized right now.`,
 	root.AddCommand(newProxyCmd())
 	root.AddCommand(newEngagementCmd())
 	root.AddCommand(newRunCmd())
+	root.AddCommand(newDoctorCmd())
 	return root
 }

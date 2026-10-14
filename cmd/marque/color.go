@@ -14,6 +14,7 @@ func colorize(ansiCode, msg string) string {
 }
 
 const (
-	colorRed   = "31"
-	colorGreen = "32"
+	colorRed    = "31"
+	colorGreen  = "32"
+	colorYellow = "33"
 )
