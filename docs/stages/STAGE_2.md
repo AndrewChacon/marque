@@ -135,3 +135,25 @@ in `docs/UX_FLOW.md`, which the schema had no field for.)
    tunneling for the local target, confirming the allow path actually
    works — and confirming the documented limitation behaves exactly as
    specified rather than crashing or hanging.
+
+5. **A follow-up review pass found `dial()` had no timeout** —
+   `net.Dial("tcp", ...)`, unbounded. Scanning any real range during
+   an engagement always includes unreachable or firewalled hosts, and
+   this isn't theoretical: confirmed live against `10.255.255.1` in
+   this environment, which hung for the OS's full connect timeout
+   before the fix and completed in exactly 10s after it. **Fixed**
+   with `net.DialTimeout`. The same review found reading the SOCKS5/
+   HTTP handshake had no read deadline either, for the same underlying
+   reason — **fixed** alongside it, both bounded by one
+   `Proxy.NetworkTimeout` field (default 10s, matching what
+   `resolveTarget` already used for DNS).
+
+6. **The first attempt at fixing #5 used a package-level `var` so
+   tests could shrink the timeout** — `go test -race` correctly
+   flagged a real data race: the proxy's background connection-
+   handling goroutines read it with no synchronization against a
+   test's cleanup restoring it afterward. **Fixed** by making it a
+   `Proxy` struct field instead (each test gets its own independent
+   `Proxy`, no shared mutable state, same testability, no race) —
+   the fix for the robustness issue needed its own fix once the test
+   written to prove it exposed a second problem.
