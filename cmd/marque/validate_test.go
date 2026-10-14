@@ -122,6 +122,18 @@ func TestWindowStatus(t *testing.T) {
 	}
 }
 
+func TestEngagementLabel(t *testing.T) {
+	s := testScope(t, time.Now().Add(-time.Hour), time.Now().Add(time.Hour), `
+scope:
+  include:
+    - 10.0.0.0/16
+`)
+	assert.Equal(t, "test-engagement", engagementLabel(s))
+
+	s.Client = "Acme Corp"
+	assert.Equal(t, "test-engagement (Acme Corp)", engagementLabel(s))
+}
+
 func TestPluralDays(t *testing.T) {
 	assert.Equal(t, "1 day", pluralDays(1))
 	assert.Equal(t, "0 days", pluralDays(0))

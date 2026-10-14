@@ -16,5 +16,6 @@ precisely, whether a target is authorized right now.`,
 		SilenceErrors: true,
 	}
 	root.AddCommand(newValidateCmd())
+	root.AddCommand(newProxyCmd())
 	return root
 }

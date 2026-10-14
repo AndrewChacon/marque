@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
 	"time"
 
 	"github.com/AndrewChacon/red-marque/pkg/scope"
@@ -41,7 +40,7 @@ func newValidateCmd() *cobra.Command {
 func printValidationTable(w io.Writer, s *scope.Scope) {
 	now := time.Now()
 
-	fmt.Fprintf(w, "RedMarque — engagement: %s\n", s.Name)
+	fmt.Fprintf(w, "RedMarque — engagement: %s\n", engagementLabel(s))
 	fmt.Fprintf(w, "window: %s → %s (%s)\n", s.Start.Format("2006-01-02"), s.End.Format("2006-01-02"), windowSummary(s, now))
 	fmt.Fprintf(w, "mode: %s\n", s.Mode)
 
@@ -59,12 +58,22 @@ func printValidationTable(w io.Writer, s *scope.Scope) {
 
 	if windowStatus(s, now) == "expired" {
 		fmt.Fprintln(w)
-		fmt.Fprintln(w, warnColor("⚠ engagement window has ended — scope checks will deny everything until this file is updated"))
+		fmt.Fprintln(w, colorize(colorRed, "⚠ engagement window has ended — scope checks will deny everything until this file is updated"))
 	}
+}
+
+// engagementLabel renders "name" or "name (client)" depending on
+// whether the optional client field is set.
+func engagementLabel(s *scope.Scope) string {
+	if s.Client == "" {
+		return s.Name
+	}
+	return fmt.Sprintf("%s (%s)", s.Name, s.Client)
 }
 
 type validationJSON struct {
 	Name    string     `json:"name"`
+	Client  string     `json:"client,omitempty"`
 	Start   time.Time  `json:"start"`
 	End     time.Time  `json:"end"`
 	Mode    scope.Mode `json:"mode"`
@@ -79,6 +88,7 @@ func printValidationJSON(w io.Writer, s *scope.Scope) error {
 	enc.SetIndent("", "  ")
 	return enc.Encode(validationJSON{
 		Name:    s.Name,
+		Client:  s.Client,
 		Start:   s.Start,
 		End:     s.End,
 		Mode:    s.Mode,
@@ -90,7 +100,7 @@ func printValidationJSON(w io.Writer, s *scope.Scope) error {
 
 // windowStatus mirrors the active/expired/upcoming vocabulary
 // `marque engagement list` will use once engagement contexts land
-// (Week 3), so output converges on one status vocabulary across
+// (Stage 3), so output converges on one status vocabulary across
 // commands instead of each command inventing its own. now is passed
 // in rather than sampled here so one render of the table (or one
 // JSON encode) is judged against a single consistent instant.
@@ -121,11 +131,4 @@ func pluralDays(n int) string {
 		return "1 day"
 	}
 	return fmt.Sprintf("%d days", n)
-}
-
-func warnColor(msg string) string {
-	if os.Getenv("NO_COLOR") != "" {
-		return msg
-	}
-	return "\x1b[31m" + msg + "\x1b[0m"
 }
