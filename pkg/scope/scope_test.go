@@ -153,6 +153,20 @@ scope:
 	assert.False(t, s.CheckHost("other.acme.com").Allowed)
 }
 
+func TestCheckHost_SingleLabelHostname(t *testing.T) {
+	s := mustScope(t, `
+scope:
+  include:
+    - webserver01
+  exclude:
+    - DC01
+`)
+	assert.True(t, s.CheckHost("webserver01").Allowed)
+	assert.True(t, s.CheckHost("WEBSERVER01").Allowed, "hostnames normalize case")
+	assert.False(t, s.CheckHost("dc01").Allowed, "excluded single-label host still wins")
+	assert.False(t, s.CheckHost("other").Allowed)
+}
+
 func TestCheckHost_LiteralIPDelegatesToCheck(t *testing.T) {
 	s := mustScope(t, `
 scope:

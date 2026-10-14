@@ -107,12 +107,12 @@ func parseDomainRule(raw string) (domainRule, error) {
 	return domainRule{raw: raw, wildcard: wildcard, base: base}, nil
 }
 
+// validHostname accepts single-label names (e.g. "webserver01",
+// common for internal engagements — AD/NetBIOS names, DNS
+// search-domain-resolved short names) as well as FQDNs. Each label
+// still has to look like a real DNS label.
 func validHostname(host string) bool {
-	labels := strings.Split(host, ".")
-	if len(labels) < 2 {
-		return false
-	}
-	for _, label := range labels {
+	for _, label := range strings.Split(host, ".") {
 		if !domainLabelRE.MatchString(label) {
 			return false
 		}
