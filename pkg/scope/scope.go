@@ -33,6 +33,8 @@ const (
 	ModeDryRun
 )
 
+// String renders m as the same lowercase name used in a scope file's
+// mode field ("enforce", "warn", "dry-run").
 func (m Mode) String() string {
 	switch m {
 	case ModeEnforce:
@@ -85,10 +87,15 @@ func parseMode(raw string) (Mode, error) {
 // in time plus the CIDRs and domains a target must fall inside (and
 // outside any exclusion) to be in scope.
 type Scope struct {
-	Name  string
+	// Name is the engagement name from the scope file, e.g. "acme-2026q4".
+	Name string
+	// Start is the beginning of the authorized engagement window.
 	Start time.Time
-	End   time.Time
-	Mode  Mode
+	// End is the end of the authorized engagement window.
+	End time.Time
+	// Mode is the scope file's declared mode, carried through to every
+	// Decision unchanged — see Mode's doc comment for what it means.
+	Mode Mode
 
 	includeCIDRs   []cidrRule
 	excludeCIDRs   []cidrRule

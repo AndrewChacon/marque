@@ -11,11 +11,22 @@ import (
 // target is allowed, which rule (if any) decided that, and why. It is
 // also the unit pkg/audit logs — see audit.Log.
 type Decision struct {
-	Allowed     bool   `json:"allowed"`
-	Mode        Mode   `json:"mode"`
-	Target      string `json:"target"`
+	// Allowed is the scope outcome: true if Target is in scope and the
+	// engagement window is currently open.
+	Allowed bool `json:"allowed"`
+	// Mode is copied from the Scope that produced this Decision. It
+	// does not affect Allowed — it's metadata telling the consumer
+	// how to react (block, warn-and-pass, or take no real action).
+	Mode Mode `json:"mode"`
+	// Target is the IP or hostname that was checked, as passed to
+	// Check or CheckHost (or its net.IP.String() form).
+	Target string `json:"target"`
+	// MatchedRule is the raw include/exclude entry that decided this
+	// outcome, or empty if nothing matched (an implicit deny).
 	MatchedRule string `json:"matched_rule,omitempty"`
-	Reason      string `json:"reason"`
+	// Reason is a human-readable explanation, suitable for printing
+	// directly in a CLI violation message or audit export.
+	Reason string `json:"reason"`
 }
 
 // Check reports whether ip is in scope right now. This is the

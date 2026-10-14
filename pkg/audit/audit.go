@@ -36,10 +36,16 @@ type entryBody struct {
 
 // Entry is one line of the audit log.
 type Entry struct {
-	Timestamp time.Time      `json:"timestamp"`
-	Decision  scope.Decision `json:"decision"`
-	PrevHash  string         `json:"prev_hash"`
-	Hash      string         `json:"hash"`
+	// Timestamp is when the decision was logged, in UTC.
+	Timestamp time.Time `json:"timestamp"`
+	// Decision is the scope outcome this entry records.
+	Decision scope.Decision `json:"decision"`
+	// PrevHash is the Hash of the entry immediately before this one,
+	// or "" for the first entry in the log.
+	PrevHash string `json:"prev_hash"`
+	// Hash is sha256(PrevHash + the JSON-encoded Timestamp/Decision/PrevHash),
+	// forming the chain Verify walks.
+	Hash string `json:"hash"`
 }
 
 func computeHash(prevHash string, ts time.Time, d scope.Decision) (string, error) {
