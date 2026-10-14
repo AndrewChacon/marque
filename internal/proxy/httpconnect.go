@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"time"
 )
 
 // serveHTTPConnect handles the CONNECT method only — tunneling, the
@@ -13,6 +14,8 @@ import (
 // scope; anything that needs that should use the SOCKS5 listener
 // instead.
 func (p *Proxy) serveHTTPConnect(conn net.Conn, br *bufio.Reader) {
+	// handleConn already set a read deadline covering the handshake;
+	// clear it below once a full request has been parsed.
 	req, err := http.ReadRequest(br)
 	if err != nil || req.Method != http.MethodConnect {
 		fmt.Fprint(conn, "HTTP/1.1 400 Bad Request\r\n\r\n")
@@ -24,6 +27,7 @@ func (p *Proxy) serveHTTPConnect(conn net.Conn, br *bufio.Reader) {
 		fmt.Fprint(conn, "HTTP/1.1 400 Bad Request\r\n\r\n")
 		return
 	}
+	conn.SetReadDeadline(time.Time{})
 
 	target, decision := p.connect(host, port)
 	if target == nil {

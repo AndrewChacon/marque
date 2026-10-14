@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"strconv"
+	"time"
 )
 
 // SOCKS5 wire protocol constants (RFC 1928). Only the CONNECT command
@@ -30,6 +31,9 @@ const (
 )
 
 func (p *Proxy) serveSOCKS5(conn net.Conn, br *bufio.Reader) {
+	// handleConn already set a read deadline covering the handshake,
+	// starting from its own protocol-detection peek; clear it below
+	// once a full request has been parsed.
 	if err := socks5Greeting(br, conn); err != nil {
 		return
 	}
@@ -39,6 +43,7 @@ func (p *Proxy) serveSOCKS5(conn net.Conn, br *bufio.Reader) {
 		socks5WriteReply(conn, socks5ReplyGeneralFailure)
 		return
 	}
+	conn.SetReadDeadline(time.Time{})
 
 	target, decision := p.connect(host, port)
 	if target == nil {

@@ -18,6 +18,9 @@ import (
 	"github.com/AndrewChacon/red-marque/pkg/scope"
 )
 
+// defaultNetworkTimeout is used when Proxy.NetworkTimeout is zero.
+const defaultNetworkTimeout = 10 * time.Second
+
 // Auditor is the logging dependency Proxy needs — satisfied by
 // *audit.Log without any wrapping. Declaring it as an interface
 // (rather than depending on *audit.Log directly) is what makes the
@@ -41,6 +44,21 @@ type Proxy struct {
 	// OnDecision, if set, is called once per connection attempt with
 	// its final Decision — the hook a caller uses for a live stream.
 	OnDecision func(scope.Decision)
+
+	// NetworkTimeout bounds every network operation except the relay
+	// itself: DNS resolution, dialing the target, and reading a
+	// client's handshake. Zero means defaultNetworkTimeout. The relay
+	// phase must stay unbounded — a long-lived interactive session
+	// (reverse shell, SSH tunnel) tunneled through this proxy is
+	// normal pentest traffic, not something to deadline.
+	NetworkTimeout time.Duration
+}
+
+func (p *Proxy) timeout() time.Duration {
+	if p.NetworkTimeout > 0 {
+		return p.NetworkTimeout
+	}
+	return defaultNetworkTimeout
 }
 
 // Serve accepts connections on ln until Accept errors — including
@@ -58,6 +76,14 @@ func (p *Proxy) Serve(ln net.Listener) error {
 
 func (p *Proxy) handleConn(conn net.Conn) {
 	defer conn.Close()
+
+	// Bounds how long we wait for a client to even start speaking,
+	// including this protocol-detection peek — a client that opens a
+	// connection and sends nothing at all must not hold a goroutine
+	// open indefinitely. Each protocol handler clears this once it has
+	// successfully parsed a request; the dial/resolve/relay phase that
+	// follows is deliberately unbounded (dial has its own timeout).
+	conn.SetReadDeadline(time.Now().Add(p.timeout()))
 
 	br := bufio.NewReader(conn)
 	first, err := br.Peek(1)
@@ -87,7 +113,7 @@ func (p *Proxy) resolveTarget(host string) (net.IP, error) {
 	if ip := net.ParseIP(host); ip != nil {
 		return ip, nil
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), p.timeout())
 	defer cancel()
 	addrs, err := p.resolver().LookupIPAddr(ctx, host)
 	if err != nil {
@@ -158,6 +184,7 @@ func (p *Proxy) connect(host, port string) (net.Conn, scope.Decision) {
 
 	if err := p.Audit.Log(decision); err != nil {
 		decision.Allowed = false
+		decision.MatchedRule = ""
 		decision.Reason = fmt.Sprintf("audit log write failed (%v); denying rather than proceed unaudited", err)
 		p.notify(decision)
 		return nil, decision
@@ -181,7 +208,7 @@ func (p *Proxy) dial(ip net.IP, port string, decision scope.Decision) (net.Conn,
 	if ip == nil {
 		return nil, decision
 	}
-	conn, err := net.Dial("tcp", net.JoinHostPort(ip.String(), port))
+	conn, err := net.DialTimeout("tcp", net.JoinHostPort(ip.String(), port), p.timeout())
 	if err != nil {
 		return nil, decision
 	}

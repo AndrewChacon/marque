@@ -511,7 +511,8 @@ scope:
     - %s
 `, targetHost))
 
-	p := &Proxy{Scope: s, Audit: failingAuditor{}}
+	decisions := make(chan scope.Decision, 1)
+	p := &Proxy{Scope: s, Audit: failingAuditor{}, OnDecision: func(d scope.Decision) { decisions <- d }}
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	t.Cleanup(func() { ln.Close() })
@@ -521,6 +522,9 @@ scope:
 	defer conn.Close()
 	assert.Equal(t, byte(socks5ReplyNotAllowedByRuleset), rep, "an audit failure must deny even in warn mode")
 	assert.Equal(t, int32(0), atomic.LoadInt32(connCount))
+
+	d := <-decisions
+	assert.Empty(t, d.MatchedRule, "a stale MatchedRule from before the audit failure would be misleading next to the failure reason")
 }
 
 func TestProxy_SOCKS5_IPv6Literal(t *testing.T) {
@@ -642,4 +646,92 @@ scope:
 	conn, code := httpConnect(t, proxyAddr, "example.com")
 	defer conn.Close()
 	assert.Equal(t, 400, code)
+}
+
+// startProxyWithTimeout is like startProxy but lets a test shrink
+// NetworkTimeout, so timeout behavior is observable in milliseconds
+// instead of waiting out a real multi-minute OS-level connect
+// timeout. A Proxy field, not shared package state, so concurrent
+// tests (and the proxy's own background goroutines) never race on it.
+func startProxyWithTimeout(t *testing.T, s *scope.Scope, timeout time.Duration) (addr string, decisions chan scope.Decision) {
+	t.Helper()
+
+	auditPath := filepath.Join(t.TempDir(), "audit.jsonl")
+	log, err := audit.Open(auditPath)
+	require.NoError(t, err)
+	t.Cleanup(func() { log.Close() })
+
+	decisions = make(chan scope.Decision, 16)
+	p := &Proxy{
+		Scope:          s,
+		Audit:          log,
+		NetworkTimeout: timeout,
+		OnDecision:     func(d scope.Decision) { decisions <- d },
+	}
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { ln.Close() })
+
+	go p.Serve(ln)
+
+	return ln.Addr().String(), decisions
+}
+
+// TestProxy_DialTimeout guards against the real-world failure mode a
+// pentest proxy hits constantly: scanning any real range includes
+// unreachable or firewalled hosts, and a bare net.Dial with no
+// timeout can hang for the OS's full SYN-retry window (1-2+ minutes
+// on Linux) per such attempt. 10.255.255.1 is the standard
+// "likely to hang, not instantly refuse" test address; the assertion
+// is on wall-clock time, not the exact failure reason, since whether
+// this specific address black-holes or refuses outright can vary by
+// environment — what must always be true is that the proxy never
+// hangs anywhere near the old unbounded default.
+func TestProxy_DialTimeout(t *testing.T) {
+	s := mustScope(t, `
+scope:
+  include:
+    - 10.255.255.1/32
+`)
+	proxyAddr, decisions := startProxyWithTimeout(t, s, 200*time.Millisecond)
+
+	start := time.Now()
+	conn, rep := socks5Connect(t, proxyAddr, socks5ATYPDomain, "10.255.255.1", 1)
+	elapsed := time.Since(start)
+	defer conn.Close()
+
+	assert.Less(t, elapsed, 2*time.Second, "a dial to an unreachable address must not hang")
+	assert.Equal(t, byte(socks5ReplyGeneralFailure), rep)
+
+	d := <-decisions
+	assert.True(t, d.Allowed, "the decision itself is correctly allowed; only the dial couldn't complete")
+}
+
+// TestProxy_HandshakeReadDeadline covers the other half of the same
+// fix: a connection that opens but never sends its SOCKS5 greeting
+// must not hold a goroutine open forever.
+func TestProxy_HandshakeReadDeadline(t *testing.T) {
+	s := mustScope(t, `
+scope:
+  include:
+    - 10.0.0.0/8
+`)
+	proxyAddr, _ := startProxyWithTimeout(t, s, 200*time.Millisecond)
+
+	conn, err := net.Dial("tcp", proxyAddr)
+	require.NoError(t, err)
+	defer conn.Close()
+
+	// Deliberately send nothing. A generous client-side deadline is
+	// just a safety net so the test itself can't hang if the fix
+	// regresses; the real assertion is how quickly it returns.
+	conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	one := make([]byte, 1)
+	start := time.Now()
+	_, err = conn.Read(one)
+	elapsed := time.Since(start)
+
+	assert.Error(t, err, "server must close a connection that never completes its handshake")
+	assert.Less(t, elapsed, 1*time.Second, "should close near the server's 200ms handshake deadline, not the test's 2s fallback")
 }
