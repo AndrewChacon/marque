@@ -17,5 +17,6 @@ precisely, whether a target is authorized right now.`,
 	}
 	root.AddCommand(newValidateCmd())
 	root.AddCommand(newProxyCmd())
+	root.AddCommand(newEngagementCmd())
 	return root
 }
