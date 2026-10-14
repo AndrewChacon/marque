@@ -354,6 +354,20 @@ scope:
 	}
 }
 
+func TestParse_ExposesDeclaredRulesInOrder(t *testing.T) {
+	s := mustScope(t, `
+scope:
+  include:
+    - 10.0.0.0/16
+    - "*.acme.com"
+  exclude:
+    - 10.0.5.0/24
+    - db.internal.acme.com
+`)
+	assert.Equal(t, []string{"10.0.0.0/16", "*.acme.com"}, s.IncludeRules)
+	assert.Equal(t, []string{"10.0.5.0/24", "db.internal.acme.com"}, s.ExcludeRules)
+}
+
 func TestLoad_FileNotFound(t *testing.T) {
 	_, err := Load("/nonexistent/path/scope.yaml")
 	require.Error(t, err)

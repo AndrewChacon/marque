@@ -96,6 +96,13 @@ type Scope struct {
 	// Mode is the scope file's declared mode, carried through to every
 	// Decision unchanged — see Mode's doc comment for what it means.
 	Mode Mode
+	// IncludeRules and ExcludeRules are the include/exclude entries
+	// exactly as declared in the scope file, in declaration order.
+	// Check/CheckHost don't use these directly (they match against the
+	// parsed CIDR/domain rules below) — these are for a consumer that
+	// wants to display what's in scope, like `marque validate`.
+	IncludeRules []string
+	ExcludeRules []string
 
 	includeCIDRs   []cidrRule
 	excludeCIDRs   []cidrRule
@@ -197,17 +204,22 @@ func (s *Scope) addRule(raw string, include bool) error {
 		} else {
 			s.excludeCIDRs = append(s.excludeCIDRs, rule)
 		}
-		return nil
+	} else {
+		dr, err := parseDomainRule(trimmed)
+		if err != nil {
+			return err
+		}
+		if include {
+			s.includeDomains = append(s.includeDomains, dr)
+		} else {
+			s.excludeDomains = append(s.excludeDomains, dr)
+		}
 	}
 
-	dr, err := parseDomainRule(trimmed)
-	if err != nil {
-		return err
-	}
 	if include {
-		s.includeDomains = append(s.includeDomains, dr)
+		s.IncludeRules = append(s.IncludeRules, trimmed)
 	} else {
-		s.excludeDomains = append(s.excludeDomains, dr)
+		s.ExcludeRules = append(s.ExcludeRules, trimmed)
 	}
 	return nil
 }
