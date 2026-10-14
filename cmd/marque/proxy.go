@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -103,10 +104,10 @@ func runProxy(cmd *cobra.Command, opts proxyOptions) error {
 		},
 	}
 
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 	go func() {
-		<-sigCh
+		<-ctx.Done()
 		fmt.Fprintln(out, "\nshutting down...")
 		ln.Close()
 	}()
