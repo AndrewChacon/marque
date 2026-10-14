@@ -157,3 +157,16 @@ in `docs/UX_FLOW.md`, which the schema had no field for.)
    `Proxy`, no shared mutable state, same testability, no race) —
    the fix for the robustness issue needed its own fix once the test
    written to prove it exposed a second problem.
+
+7. **A final cleanup pass found `runProxy`'s shutdown handling was a
+   hand-rolled `os.Signal` channel + goroutine**, with no call to
+   `signal.Stop` — meaning if `runProxy` were ever invoked more than
+   once in the same process, signal registrations would silently
+   accumulate. Not reachable today (it only ever runs once per CLI
+   process), but **fixed** anyway by switching to
+   `signal.NotifyContext`, the stdlib's purpose-built helper for this
+   exact pattern — fewer lines, and its `stop()` (deferred) closes the
+   gap for free. Verified by hand that `Ctrl-C` still shuts down
+   cleanly with the new path. Nothing else from the full re-read
+   needed changing — the core design (exclude-always-wins, the
+   DNS-rebinding re-check, fail-closed audit logging) held up clean.
