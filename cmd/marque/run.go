@@ -1,0 +1,161 @@
+package main
+
+import (
+	"fmt"
+	"io"
+	"net"
+	"net/url"
+	"os"
+	"os/exec"
+	"regexp"
+	"strings"
+	"syscall"
+
+	"github.com/AndrewChacon/red-marque/internal/engagement"
+	"github.com/AndrewChacon/red-marque/pkg/audit"
+	"github.com/AndrewChacon/red-marque/pkg/scope"
+	"github.com/spf13/cobra"
+)
+
+func newRunCmd() *cobra.Command {
+	return newRunCmdWithStore(nil)
+}
+
+func newRunCmdWithStore(injected *engagement.Store) *cobra.Command {
+	var scopeFlag string
+	var auditLogFlag string
+
+	cmd := &cobra.Command{
+		Use:   "run [--scope file.yaml] -- <command> [args...]",
+		Short: "Check a command's arguments against scope, then run it",
+		Args:  cobra.MinimumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			store, err := storeOrDefault(injected)
+			if err != nil {
+				return err
+			}
+			paths, err := resolvePaths(scopeFlag, auditLogFlag, store)
+			if err != nil {
+				return err
+			}
+
+			s, err := scope.Load(paths.scopePath)
+			if err != nil {
+				return err
+			}
+
+			log, err := audit.Open(paths.auditLogPath)
+			if err != nil {
+				return err
+			}
+			defer log.Close()
+
+			if err := checkRunTargets(cmd.OutOrStdout(), s, log, args); err != nil {
+				return err
+			}
+
+			return execCommand(args)
+		},
+	}
+
+	cmd.Flags().StringVar(&scopeFlag, "scope", "", "path to scope.yaml (default: the active engagement)")
+	cmd.Flags().StringVar(&auditLogFlag, "audit-log", "", "path to the audit log (default: derived from --scope or the active engagement)")
+	return cmd
+}
+
+// auditLogger is the one method checkRunTargets needs — a local
+// interface rather than importing internal/proxy's Auditor, since
+// run.go has no other relationship to that package. *audit.Log
+// satisfies this with no wrapping; tests inject a stub.
+type auditLogger interface {
+	Log(scope.Decision) error
+}
+
+var (
+	// ipv4RE is intentionally IPv4-only and used for substring scans
+	// within an arg (e.g. "--target=10.0.0.5") — IPv6 substring
+	// scanning in free text is noisy enough to skip for a best-effort
+	// tool; a literal IPv6 address as a whole argv token is still
+	// caught by net.ParseIP below.
+	ipv4RE = regexp.MustCompile(`(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)`)
+
+	// hostnameRE is anchored — whole-token matches only. Scanning for
+	// hostname-shaped substrings inside arbitrary flag text (e.g.
+	// "max.retries") would be too false-positive-prone to be useful.
+	hostnameRE = regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$`)
+)
+
+// extractTargets is the best-effort regex scan the brief calls for —
+// explicitly not per-tool argument parsing. Three passes per arg,
+// most specific first: a URL's own hostname, then "the whole token is
+// an IP or hostname," then "an IPv4 address appears somewhere inside
+// this token." No match anywhere in argv is not an error — nothing to
+// check means exec proceeds, this is a safety net, not a sandbox.
+func extractTargets(args []string) []string {
+	seen := make(map[string]bool)
+	var targets []string
+	add := func(t string) {
+		if t != "" && !seen[t] {
+			seen[t] = true
+			targets = append(targets, t)
+		}
+	}
+
+	for _, arg := range args {
+		if strings.Contains(arg, "://") {
+			if u, err := url.Parse(arg); err == nil {
+				if h := u.Hostname(); h != "" {
+					add(h)
+					continue
+				}
+			}
+		}
+
+		if net.ParseIP(arg) != nil || hostnameRE.MatchString(arg) {
+			add(arg)
+			continue
+		}
+
+		for _, m := range ipv4RE.FindAllString(arg, -1) {
+			add(m)
+		}
+	}
+	return targets
+}
+
+// checkRunTargets logs every extracted target's decision — allow or
+// deny — and refuses (returning an error, before anything is ever
+// exec'd) if any of them is out of scope. A logging failure refuses
+// too, same fail-closed rule as everywhere else in this project.
+func checkRunTargets(w io.Writer, s *scope.Scope, log auditLogger, args []string) error {
+	var denied []scope.Decision
+
+	for _, target := range extractTargets(args) {
+		d := s.CheckHost(target)
+		if err := log.Log(d); err != nil {
+			return fmt.Errorf("audit log write failed (%v); refusing to run rather than proceed unaudited", err)
+		}
+		if !d.Allowed {
+			denied = append(denied, d)
+		}
+	}
+
+	if len(denied) == 0 {
+		return nil
+	}
+	for _, d := range denied {
+		fmt.Fprintln(w, colorize(colorRed, fmt.Sprintf("BLOCKED: %s — %s", d.Target, d.Reason)))
+	}
+	return fmt.Errorf("refusing to run: %d target(s) out of scope", len(denied))
+}
+
+// execCommand replaces the current process (not fork+wait) — the
+// idiomatic shape for a wrapper tool, and fine since this project only
+// targets linux/darwin.
+func execCommand(args []string) error {
+	path, err := exec.LookPath(args[0])
+	if err != nil {
+		return fmt.Errorf("%s: %w", args[0], err)
+	}
+	return syscall.Exec(path, args, os.Environ())
+}
