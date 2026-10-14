@@ -117,7 +117,7 @@ func TestWindowStatus(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			s := testScope(t, tc.start, tc.end, "scope:\n  include:\n    - 10.0.0.0/16\n")
-			assert.Equal(t, tc.want, windowStatus(s))
+			assert.Equal(t, tc.want, windowStatus(s, now))
 		})
 	}
 }

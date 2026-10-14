@@ -39,8 +39,10 @@ func newValidateCmd() *cobra.Command {
 }
 
 func printValidationTable(w io.Writer, s *scope.Scope) {
+	now := time.Now()
+
 	fmt.Fprintf(w, "RedMarque — engagement: %s\n", s.Name)
-	fmt.Fprintf(w, "window: %s → %s (%s)\n", s.Start.Format("2006-01-02"), s.End.Format("2006-01-02"), windowSummary(s))
+	fmt.Fprintf(w, "window: %s → %s (%s)\n", s.Start.Format("2006-01-02"), s.End.Format("2006-01-02"), windowSummary(s, now))
 	fmt.Fprintf(w, "mode: %s\n", s.Mode)
 
 	fmt.Fprintln(w, "\nIN SCOPE")
@@ -55,7 +57,7 @@ func printValidationTable(w io.Writer, s *scope.Scope) {
 		}
 	}
 
-	if time.Now().After(s.End) {
+	if windowStatus(s, now) == "expired" {
 		fmt.Fprintln(w)
 		fmt.Fprintln(w, warnColor("⚠ engagement window has ended — scope checks will deny everything until this file is updated"))
 	}
@@ -72,6 +74,7 @@ type validationJSON struct {
 }
 
 func printValidationJSON(w io.Writer, s *scope.Scope) error {
+	now := time.Now()
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	return enc.Encode(validationJSON{
@@ -81,16 +84,17 @@ func printValidationJSON(w io.Writer, s *scope.Scope) error {
 		Mode:    s.Mode,
 		Include: s.IncludeRules,
 		Exclude: s.ExcludeRules,
-		Status:  windowStatus(s),
+		Status:  windowStatus(s, now),
 	})
 }
 
 // windowStatus mirrors the active/expired/upcoming vocabulary
 // `marque engagement list` will use once engagement contexts land
 // (Week 3), so output converges on one status vocabulary across
-// commands instead of each command inventing its own.
-func windowStatus(s *scope.Scope) string {
-	now := time.Now()
+// commands instead of each command inventing its own. now is passed
+// in rather than sampled here so one render of the table (or one
+// JSON encode) is judged against a single consistent instant.
+func windowStatus(s *scope.Scope, now time.Time) string {
 	switch {
 	case now.After(s.End):
 		return "expired"
@@ -101,9 +105,8 @@ func windowStatus(s *scope.Scope) string {
 	}
 }
 
-func windowSummary(s *scope.Scope) string {
-	now := time.Now()
-	switch windowStatus(s) {
+func windowSummary(s *scope.Scope, now time.Time) string {
+	switch windowStatus(s, now) {
 	case "expired":
 		return fmt.Sprintf("expired %s ago", pluralDays(max(1, int(now.Sub(s.End).Hours()/24))))
 	case "upcoming":

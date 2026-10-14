@@ -170,14 +170,18 @@ func Parse(data []byte) (*Scope, error) {
 	s := &Scope{Name: name, Start: start, End: end, Mode: mode}
 
 	for _, raw := range f.Scope.Include {
-		if err := s.addRule(raw, true); err != nil {
+		trimmed, err := s.addRule(raw, true)
+		if err != nil {
 			return nil, err
 		}
+		s.IncludeRules = append(s.IncludeRules, trimmed)
 	}
 	for _, raw := range f.Scope.Exclude {
-		if err := s.addRule(raw, false); err != nil {
+		trimmed, err := s.addRule(raw, false)
+		if err != nil {
 			return nil, err
 		}
+		s.ExcludeRules = append(s.ExcludeRules, trimmed)
 	}
 
 	if len(s.includeCIDRs) == 0 && len(s.includeDomains) == 0 {
@@ -187,16 +191,18 @@ func Parse(data []byte) (*Scope, error) {
 	return s, nil
 }
 
-func (s *Scope) addRule(raw string, include bool) error {
+// addRule classifies and stores a single scope entry, returning its
+// trimmed form so the caller can record it in declaration order.
+func (s *Scope) addRule(raw string, include bool) (string, error) {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" {
-		return fmt.Errorf("scope entry cannot be empty")
+		return "", fmt.Errorf("scope entry cannot be empty")
 	}
 
 	if looksLikeCIDROrIP(trimmed) {
 		ipnet, err := parseCIDROrIP(trimmed)
 		if err != nil {
-			return err
+			return "", err
 		}
 		rule := cidrRule{raw: trimmed, ipnet: ipnet}
 		if include {
@@ -204,22 +210,17 @@ func (s *Scope) addRule(raw string, include bool) error {
 		} else {
 			s.excludeCIDRs = append(s.excludeCIDRs, rule)
 		}
-	} else {
-		dr, err := parseDomainRule(trimmed)
-		if err != nil {
-			return err
-		}
-		if include {
-			s.includeDomains = append(s.includeDomains, dr)
-		} else {
-			s.excludeDomains = append(s.excludeDomains, dr)
-		}
+		return trimmed, nil
 	}
 
-	if include {
-		s.IncludeRules = append(s.IncludeRules, trimmed)
-	} else {
-		s.ExcludeRules = append(s.ExcludeRules, trimmed)
+	dr, err := parseDomainRule(trimmed)
+	if err != nil {
+		return "", err
 	}
-	return nil
+	if include {
+		s.includeDomains = append(s.includeDomains, dr)
+	} else {
+		s.excludeDomains = append(s.excludeDomains, dr)
+	}
+	return trimmed, nil
 }

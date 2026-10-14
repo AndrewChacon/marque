@@ -83,8 +83,9 @@ func cidrError(raw string, err error) error {
 }
 
 // domainLabel matches a single DNS label: alphanumeric, internal
-// hyphens allowed, no leading/trailing hyphen.
-var domainLabelRE = regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$`)
+// hyphens allowed, no leading/trailing hyphen. Lowercase only — its
+// one caller always lowercases first.
+var domainLabelRE = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
 
 func parseDomainRule(raw string) (domainRule, error) {
 	s := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(raw), "."))
