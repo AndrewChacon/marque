@@ -1,0 +1,12 @@
+engagement:
+  name: example-engagement
+  client: Example Corp
+  start: 2024-01-01T00:00:00Z
+  end: 2099-01-01T00:00:00Z
+scope:
+  include:
+    - 10.0.0.0/16
+    - "*.example-corp.test"
+  exclude:
+    - 10.0.5.0/24
+    - admin.example-corp.test
