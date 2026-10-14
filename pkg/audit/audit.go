@@ -15,6 +15,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -64,9 +65,15 @@ type Log struct {
 	last string
 }
 
-// Open opens (creating if necessary) the audit log at path and
-// recovers the hash of its last entry so new entries chain onto it
-// correctly across process restarts.
+// Open opens (creating if necessary) the audit log at path. If the
+// file already has entries, Open verifies the entire existing chain
+// (the same check Verify performs) before trusting it — tampering
+// anywhere in the file is caught here, at resume time, rather than
+// only when something later calls Verify explicitly. An unreadable
+// final entry with nothing valid after it is reported distinctly from
+// tampering (it's consistent with a crash mid-write), but Open still
+// fails closed either way: it never resumes logging onto a chain it
+// hasn't fully verified.
 func Open(path string) (*Log, error) {
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
@@ -84,28 +91,94 @@ func Open(path string) (*Log, error) {
 	return &Log{f: f, last: last}, nil
 }
 
-func lastHash(f *os.File) (string, error) {
-	if _, err := f.Seek(0, io.SeekStart); err != nil {
-		return "", fmt.Errorf("seeking audit log: %w", err)
-	}
-	scanner := bufio.NewScanner(f)
+// chainBreak records where an audit log's hash chain first stopped
+// verifying, and whether any further line follows it. That second
+// detail is what lets a caller tell "the last entry looks like an
+// incomplete write" (nothing follows it — plausibly just a crash)
+// apart from "something is wrong and more data follows it anyway"
+// (not a shape a crash produces — treat it as compromised).
+type chainBreak struct {
+	lineNo      int
+	reason      error
+	moreFollows bool
+}
+
+// walkChain scans every line of an audit log, verifying the hash
+// chain: each entry's prev_hash must match the previous entry's hash,
+// and its own hash must match what computeHash produces. It keeps
+// scanning past the first break — without further verifying anything,
+// since the chain is already broken — purely to learn whether brk
+// was at the end of the file.
+func walkChain(r io.Reader) (lastGoodHash string, brk *chainBreak, err error) {
+	scanner := bufio.NewScanner(r)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
-	last := ""
+
+	prev := ""
+	lineNo := 0
 	for scanner.Scan() {
+		lineNo++
 		line := bytes.TrimSpace(scanner.Bytes())
 		if len(line) == 0 {
 			continue
 		}
-		var e Entry
-		if err := json.Unmarshal(line, &e); err != nil {
-			return "", fmt.Errorf("existing audit log is corrupt: %w", err)
+
+		if brk != nil {
+			brk.moreFollows = true
+			continue
 		}
-		last = e.Hash
+
+		var e Entry
+		if uerr := json.Unmarshal(line, &e); uerr != nil {
+			brk = &chainBreak{lineNo: lineNo, reason: uerr}
+			continue
+		}
+		if e.PrevHash != prev {
+			brk = &chainBreak{lineNo: lineNo, reason: fmt.Errorf("prev_hash %q does not match preceding entry's hash %q — chain broken", e.PrevHash, prev)}
+			continue
+		}
+		want, herr := computeHash(e.PrevHash, e.Timestamp, e.Decision)
+		if herr != nil {
+			brk = &chainBreak{lineNo: lineNo, reason: herr}
+			continue
+		}
+		if want != e.Hash {
+			brk = &chainBreak{lineNo: lineNo, reason: errors.New("hash mismatch — entry has been tampered with")}
+			continue
+		}
+
+		prev = e.Hash
+		lastGoodHash = e.Hash
 	}
-	if err := scanner.Err(); err != nil {
-		return "", fmt.Errorf("reading audit log: %w", err)
+	if serr := scanner.Err(); serr != nil {
+		return lastGoodHash, brk, fmt.Errorf("reading audit log: %w", serr)
 	}
-	return last, nil
+	return lastGoodHash, brk, nil
+}
+
+// lastHash verifies the entire existing chain (not just its last
+// entry) and returns the hash to resume logging from. A break with
+// nothing valid following it — consistent with a crash mid-write —
+// and a break with good-looking data after it — which a crash
+// wouldn't produce — are reported with different, honest wording.
+// Either way this fails closed: it never returns a usable hash
+// alongside an error, and callers (Open) must not resume logging on
+// an unverified file.
+func lastHash(f *os.File) (string, error) {
+	if _, err := f.Seek(0, io.SeekStart); err != nil {
+		return "", fmt.Errorf("seeking audit log: %w", err)
+	}
+
+	last, brk, err := walkChain(f)
+	if err != nil {
+		return "", err
+	}
+	if brk == nil {
+		return last, nil
+	}
+	if brk.moreFollows {
+		return "", fmt.Errorf("existing audit log failed verification at line %d: %w — a crash wouldn't produce this; treat this log as compromised", brk.lineNo, brk.reason)
+	}
+	return "", fmt.Errorf("existing audit log: entry at line %d is unreadable, but the chain before it verifies cleanly — this looks like an incomplete write (e.g. a crash), not tampering. To resume, remove that incomplete last line and try again: %w", brk.lineNo, brk.reason)
 }
 
 // Log appends a decision to the log, chained onto the previous entry.
@@ -158,36 +231,12 @@ func Verify(path string) error {
 	}
 	defer f.Close()
 
-	scanner := bufio.NewScanner(f)
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
-
-	prev := ""
-	lineNo := 0
-	for scanner.Scan() {
-		lineNo++
-		line := bytes.TrimSpace(scanner.Bytes())
-		if len(line) == 0 {
-			continue
-		}
-
-		var e Entry
-		if err := json.Unmarshal(line, &e); err != nil {
-			return fmt.Errorf("line %d: %w", lineNo, err)
-		}
-		if e.PrevHash != prev {
-			return fmt.Errorf("line %d: prev_hash %q does not match preceding entry's hash %q — chain broken", lineNo, e.PrevHash, prev)
-		}
-		want, err := computeHash(e.PrevHash, e.Timestamp, e.Decision)
-		if err != nil {
-			return fmt.Errorf("line %d: %w", lineNo, err)
-		}
-		if want != e.Hash {
-			return fmt.Errorf("line %d: hash mismatch — entry has been tampered with", lineNo)
-		}
-		prev = e.Hash
+	_, brk, err := walkChain(f)
+	if err != nil {
+		return err
 	}
-	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("reading audit log: %w", err)
+	if brk != nil {
+		return fmt.Errorf("line %d: %w", brk.lineNo, brk.reason)
 	}
 	return nil
 }

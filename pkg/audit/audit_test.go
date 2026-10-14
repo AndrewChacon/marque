@@ -156,13 +156,79 @@ func TestVerify_DetectsTampering(t *testing.T) {
 	assert.Contains(t, err.Error(), "line 2")
 }
 
-func TestOpen_RejectsCorruptExistingLog(t *testing.T) {
+// TestOpen_RecognizesLikelyTruncatedWrite covers the case the project
+// brief flagged explicitly: a crash mid-write (laptop dies, OOM-kill,
+// power loss) leaves the log's last line as a half-written fragment.
+// Open still fails closed — it must not silently resume logging onto
+// an unverified file — but the error has to say "this looks like an
+// incomplete write," not the scarier, wrong "corrupt"/"tampered"
+// wording, since a human reading it needs to know this isn't evidence
+// someone altered their audit trail.
+func TestOpen_RecognizesLikelyTruncatedWrite(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "audit.jsonl")
 	require.NoError(t, os.WriteFile(path, []byte("not json\n"), 0o600))
 
 	_, err := Open(path)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "corrupt")
+	assert.Contains(t, err.Error(), "incomplete write")
+	assert.NotContains(t, err.Error(), "compromised")
+}
+
+// TestOpen_RecognizesTruncatedTailAfterGoodEntries is the more
+// realistic version of the above: a chain with real history behind
+// it, then a crash mid-write of the next entry. The good entries
+// before the break must still verify cleanly, and the diagnosis has
+// to be the same "incomplete write" wording, not "compromised."
+func TestOpen_RecognizesTruncatedTailAfterGoodEntries(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "audit.jsonl")
+	l, err := Open(path)
+	require.NoError(t, err)
+	require.NoError(t, l.Log(decision(true, "10.0.0.1")))
+	require.NoError(t, l.Log(decision(false, "192.168.1.1")))
+	require.NoError(t, l.Close())
+
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0o600)
+	require.NoError(t, err)
+	_, err = f.WriteString(`{"timestamp":"2026-10-14T12:00:00Z","decision":{"allowed":true,"mode":"enf`)
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+
+	_, err = Open(path)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "incomplete write")
+	assert.NotContains(t, err.Error(), "compromised")
+}
+
+// TestOpen_DetectsTamperingBeforeTheLastEntry is the test that proves
+// the actual gap: before this, Open only ever recovered the hash of
+// the last entry — it never verified anything before it, so tampering
+// earlier in the file would go completely unnoticed until something
+// explicitly called Verify (which nothing does yet). Open must now
+// catch this itself, at resume time, with wording that makes clear
+// this is NOT the benign "incomplete write" case.
+func TestOpen_DetectsTamperingBeforeTheLastEntry(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "audit.jsonl")
+	l, err := Open(path)
+	require.NoError(t, err)
+	require.NoError(t, l.Log(decision(true, "10.0.0.1")))
+	require.NoError(t, l.Log(decision(false, "192.168.1.1")))
+	require.NoError(t, l.Close())
+
+	lines := readLines(t, path)
+	require.Len(t, lines, 2)
+
+	var tampered Entry
+	require.NoError(t, json.Unmarshal([]byte(lines[0]), &tampered))
+	tampered.Decision.Allowed = !tampered.Decision.Allowed // flip the first entry's decision, leaving its stored hash stale
+	rewritten, err := json.Marshal(tampered)
+	require.NoError(t, err)
+	lines[0] = string(rewritten)
+	require.NoError(t, os.WriteFile(path, []byte(strings.Join(lines, "\n")+"\n"), 0o600))
+
+	_, err = Open(path)
+	require.Error(t, err, "tampering before the last entry must be caught on Open, not just on an explicit Verify call")
+	assert.Contains(t, err.Error(), "compromised")
+	assert.NotContains(t, err.Error(), "incomplete write")
 }
 
 func TestOpen_InvalidPath(t *testing.T) {
