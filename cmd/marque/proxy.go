@@ -9,10 +9,10 @@ import (
 	"net"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"syscall"
 	"time"
 
+	"github.com/AndrewChacon/red-marque/internal/engagement"
 	"github.com/AndrewChacon/red-marque/internal/proxy"
 	"github.com/AndrewChacon/red-marque/pkg/audit"
 	"github.com/AndrewChacon/red-marque/pkg/scope"
@@ -20,41 +20,48 @@ import (
 )
 
 func newProxyCmd() *cobra.Command {
-	var scopePath string
+	return newProxyCmdWithStore(nil)
+}
+
+func newProxyCmdWithStore(injected *engagement.Store) *cobra.Command {
+	var scopeFlag string
 	var force bool
 	var listenAddr string
-	var auditLogPath string
+	var auditLogFlag string
 	var jsonOut bool
 
 	cmd := &cobra.Command{
 		Use:   "proxy",
 		Short: "Run the SOCKS5 + HTTP CONNECT proxy, enforcing scope on everything routed through it",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runProxy(cmd, proxyOptions{
-				scopePath:    scopePath,
+			store, err := storeOrDefault(injected)
+			if err != nil {
+				return err
+			}
+			return runProxy(cmd, store, proxyOptions{
+				scopeFlag:    scopeFlag,
 				force:        force,
 				listenAddr:   listenAddr,
-				auditLogPath: auditLogPath,
+				auditLogFlag: auditLogFlag,
 				jsonOut:      jsonOut,
 			})
 		},
 	}
 
-	cmd.Flags().StringVar(&scopePath, "scope", "", "path to scope.yaml (required)")
+	cmd.Flags().StringVar(&scopeFlag, "scope", "", "path to scope.yaml (default: the active engagement)")
 	cmd.Flags().BoolVar(&force, "force", false, "start even if the engagement window has ended")
 	cmd.Flags().StringVar(&listenAddr, "listen", "127.0.0.1:1080", "address to listen on")
-	cmd.Flags().StringVar(&auditLogPath, "audit-log", "", "path to the audit log (default: audit.jsonl next to --scope)")
+	cmd.Flags().StringVar(&auditLogFlag, "audit-log", "", "path to the audit log (default: derived from --scope or the active engagement)")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "print each decision as a JSON object instead of a colored line")
-	cmd.MarkFlagRequired("scope")
 
 	return cmd
 }
 
 type proxyOptions struct {
-	scopePath    string
+	scopeFlag    string
 	force        bool
 	listenAddr   string
-	auditLogPath string
+	auditLogFlag string
 	jsonOut      bool
 }
 
@@ -69,8 +76,13 @@ func checkProxyPreflight(s *scope.Scope, force bool, now time.Time) error {
 	return nil
 }
 
-func runProxy(cmd *cobra.Command, opts proxyOptions) error {
-	s, err := scope.Load(opts.scopePath)
+func runProxy(cmd *cobra.Command, store *engagement.Store, opts proxyOptions) error {
+	paths, err := resolvePaths(opts.scopeFlag, opts.auditLogFlag, store)
+	if err != nil {
+		return err
+	}
+
+	s, err := scope.Load(paths.scopePath)
 	if err != nil {
 		return err
 	}
@@ -78,11 +90,7 @@ func runProxy(cmd *cobra.Command, opts proxyOptions) error {
 		return err
 	}
 
-	auditLogPath := opts.auditLogPath
-	if auditLogPath == "" {
-		auditLogPath = filepath.Join(filepath.Dir(opts.scopePath), "audit.jsonl")
-	}
-	log, err := audit.Open(auditLogPath)
+	log, err := audit.Open(paths.auditLogPath)
 	if err != nil {
 		return err
 	}

@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/AndrewChacon/red-marque/internal/engagement"
 	"github.com/AndrewChacon/red-marque/pkg/scope"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -222,15 +223,77 @@ func TestValidateCmd_MissingFile(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestValidateCmd_MissingScopeFlag(t *testing.T) {
-	cmd := newValidateCmd()
+func TestValidateCmd_MissingScopeFlagNoActiveEngagement(t *testing.T) {
+	store := &engagement.Store{Root: t.TempDir()}
+
+	cmd := newValidateCmdWithStore(store)
+	cmd.SilenceErrors = true
 	cmd.SetOut(&bytes.Buffer{})
 	cmd.SetErr(&bytes.Buffer{})
 	cmd.SetArgs([]string{})
 
 	err := cmd.Execute()
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "scope")
+	assert.Contains(t, err.Error(), "--scope")
+	assert.Contains(t, err.Error(), "engagement use")
+}
+
+func TestValidateCmd_FallsBackToActiveEngagement(t *testing.T) {
+	store := &engagement.Store{Root: t.TempDir()}
+	doc := fmt.Sprintf(`
+engagement:
+  name: acme-2026q4
+  client: Acme Corp
+  start: %s
+  end: %s
+scope:
+  include:
+    - 10.0.0.0/16
+`, time.Now().Add(-time.Hour).Format(time.RFC3339), time.Now().Add(time.Hour).Format(time.RFC3339))
+	require.NoError(t, store.Add("acme-2026q4", []byte(doc)))
+	require.NoError(t, store.SetActive("acme-2026q4"))
+
+	cmd := newValidateCmdWithStore(store)
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetArgs([]string{}) // no --scope at all
+
+	require.NoError(t, cmd.Execute())
+	assert.Contains(t, out.String(), "acme-2026q4 (Acme Corp)")
+}
+
+func TestValidateCmd_ExplicitScopeStillOverridesActiveEngagement(t *testing.T) {
+	store := &engagement.Store{Root: t.TempDir()}
+	activeDoc := fmt.Sprintf(`
+engagement:
+  name: wrong-one
+  start: %s
+  end: %s
+scope:
+  include:
+    - 10.0.0.0/16
+`, time.Now().Add(-time.Hour).Format(time.RFC3339), time.Now().Add(time.Hour).Format(time.RFC3339))
+	require.NoError(t, store.Add("wrong-one", []byte(activeDoc)))
+	require.NoError(t, store.SetActive("wrong-one"))
+
+	overridePath := writeTempScope(t, fmt.Sprintf(`
+engagement:
+  name: the-right-one
+  start: %s
+  end: %s
+scope:
+  include:
+    - 10.0.0.0/16
+`, time.Now().Add(-time.Hour).Format(time.RFC3339), time.Now().Add(time.Hour).Format(time.RFC3339)))
+
+	cmd := newValidateCmdWithStore(store)
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetArgs([]string{"--scope", overridePath})
+
+	require.NoError(t, cmd.Execute())
+	assert.Contains(t, out.String(), "the-right-one")
+	assert.NotContains(t, out.String(), "wrong-one")
 }
 
 func TestValidateCmd_JSONFlag(t *testing.T) {

@@ -6,18 +6,32 @@ import (
 	"io"
 	"time"
 
+	"github.com/AndrewChacon/red-marque/internal/engagement"
 	"github.com/AndrewChacon/red-marque/pkg/scope"
 	"github.com/spf13/cobra"
 )
 
 func newValidateCmd() *cobra.Command {
-	var scopePath string
+	return newValidateCmdWithStore(nil)
+}
+
+func newValidateCmdWithStore(injected *engagement.Store) *cobra.Command {
+	var scopeFlag string
 	var jsonOut bool
 
 	cmd := &cobra.Command{
 		Use:   "validate",
 		Short: "Check a scope file for errors and print what's in scope",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			store, err := storeOrDefault(injected)
+			if err != nil {
+				return err
+			}
+			scopePath, err := resolveScopePath(scopeFlag, store)
+			if err != nil {
+				return err
+			}
+
 			s, err := scope.Load(scopePath)
 			if err != nil {
 				return err
@@ -30,9 +44,8 @@ func newValidateCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&scopePath, "scope", "", "path to scope.yaml (required)")
+	cmd.Flags().StringVar(&scopeFlag, "scope", "", "path to scope.yaml (default: the active engagement)")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "print machine-readable JSON instead of a table")
-	cmd.MarkFlagRequired("scope")
 
 	return cmd
 }
@@ -98,12 +111,11 @@ func printValidationJSON(w io.Writer, s *scope.Scope) error {
 	})
 }
 
-// windowStatus mirrors the active/expired/upcoming vocabulary
-// `marque engagement list` will use once engagement contexts land
-// (Stage 3), so output converges on one status vocabulary across
-// commands instead of each command inventing its own. now is passed
-// in rather than sampled here so one render of the table (or one
-// JSON encode) is judged against a single consistent instant.
+// windowStatus is the one active/expired/upcoming vocabulary every
+// command shares — validate, proxy's banner, and marque engagement
+// list's STATUS column all reuse this instead of inventing their own.
+// now is passed in rather than sampled here so one render of a table
+// (or one JSON encode) is judged against a single consistent instant.
 func windowStatus(s *scope.Scope, now time.Time) string {
 	switch {
 	case now.After(s.End):

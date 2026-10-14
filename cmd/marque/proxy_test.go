@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/AndrewChacon/red-marque/internal/engagement"
 	"github.com/AndrewChacon/red-marque/pkg/scope"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -93,4 +94,22 @@ func TestPrintDecision_JSON(t *testing.T) {
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &d))
 	assert.True(t, d.Allowed)
 	assert.Equal(t, "10.0.0.1", d.Target)
+}
+
+// TestRunProxy_NoScopeNoActiveEngagementReturnsEarly proves the
+// engagement-context retrofit: with neither --scope nor an active
+// engagement, runProxy must fail via path resolution before ever
+// touching a real listener or audit log — the same pure, fast
+// early-return path.Execute() tests already rely on for validate.
+func TestRunProxy_NoScopeNoActiveEngagementReturnsEarly(t *testing.T) {
+	store := &engagement.Store{Root: t.TempDir()}
+	cmd := newProxyCmdWithStore(store)
+	cmd.SilenceErrors = true
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetArgs([]string{})
+
+	err := cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--scope")
+	assert.Contains(t, err.Error(), "engagement use")
 }
