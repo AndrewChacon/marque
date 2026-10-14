@@ -1,0 +1,207 @@
+// Package proxy is a SOCKS5 + HTTP CONNECT proxy that enforces an
+// engagement scope on every connection it relays. It contains no
+// scope-matching or audit-logging logic of its own — every decision
+// is pkg/scope.Check or CheckHost, every record is pkg/audit.Log. See
+// THREAT_MODEL.md: this is a safety net for traffic routed through
+// it, not a sandbox — a tool that bypasses the proxy entirely is
+// invisible to it.
+package proxy
+
+import (
+	"bufio"
+	"context"
+	"fmt"
+	"io"
+	"net"
+	"time"
+
+	"github.com/AndrewChacon/red-marque/pkg/scope"
+)
+
+// Auditor is the logging dependency Proxy needs — satisfied by
+// *audit.Log without any wrapping. Declaring it as an interface
+// (rather than depending on *audit.Log directly) is what makes the
+// fail-closed-on-logging-failure behavior testable: a test can supply
+// an Auditor that always errors, which isn't otherwise reachable from
+// outside pkg/audit.
+type Auditor interface {
+	Log(scope.Decision) error
+}
+
+// Proxy serves SOCKS5 and HTTP CONNECT on the same listener,
+// detecting which protocol a connection is speaking from its first
+// byte.
+type Proxy struct {
+	Scope *scope.Scope
+	Audit Auditor
+
+	// Resolver resolves hostnames; nil defaults to net.DefaultResolver.
+	Resolver Resolver
+
+	// OnDecision, if set, is called once per connection attempt with
+	// its final Decision — the hook a caller uses for a live stream.
+	OnDecision func(scope.Decision)
+}
+
+// Serve accepts connections on ln until Accept errors — including
+// when ln is closed, which a caller doing a graceful shutdown should
+// treat as a normal exit, not a failure.
+func (p *Proxy) Serve(ln net.Listener) error {
+	for {
+		conn, err := ln.Accept()
+		if err != nil {
+			return err
+		}
+		go p.handleConn(conn)
+	}
+}
+
+func (p *Proxy) handleConn(conn net.Conn) {
+	defer conn.Close()
+
+	br := bufio.NewReader(conn)
+	first, err := br.Peek(1)
+	if err != nil {
+		return
+	}
+
+	if first[0] == socks5Version {
+		p.serveSOCKS5(conn, br)
+	} else {
+		p.serveHTTPConnect(conn, br)
+	}
+}
+
+func (p *Proxy) resolver() Resolver {
+	if p.Resolver != nil {
+		return p.Resolver
+	}
+	return net.DefaultResolver
+}
+
+// resolveTarget returns host itself if it's already a literal IP, or
+// resolves it otherwise. Resolution is always attempted regardless of
+// scope — decide uses the result to re-check the actual address, and
+// ModeWarn needs an address to dial even for a denied target.
+func (p *Proxy) resolveTarget(host string) (net.IP, error) {
+	if ip := net.ParseIP(host); ip != nil {
+		return ip, nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	addrs, err := p.resolver().LookupIPAddr(ctx, host)
+	if err != nil {
+		return nil, err
+	}
+	if len(addrs) == 0 {
+		return nil, fmt.Errorf("no addresses found for %q", host)
+	}
+	return addrs[0].IP, nil
+}
+
+// decide is the DNS-rebinding close described in THREAT_MODEL.md: a
+// hostname-based decision and the IP it actually resolves to are not
+// guaranteed to agree, so a hostname that passes CheckHost still has
+// its resolved address re-checked with Check before anything is
+// trusted.
+func (p *Proxy) decide(host string, resolvedIP net.IP) scope.Decision {
+	if ip := net.ParseIP(host); ip != nil {
+		return p.Scope.Check(ip)
+	}
+
+	hostDecision := p.Scope.CheckHost(host)
+	if !hostDecision.Allowed {
+		return hostDecision
+	}
+	if resolvedIP == nil {
+		return scope.Decision{
+			Allowed: false,
+			Mode:    p.Scope.Mode,
+			Target:  host,
+			Reason:  "hostname matched an include rule but could not be resolved",
+		}
+	}
+
+	ipDecision := p.Scope.Check(resolvedIP)
+	if !ipDecision.Allowed {
+		return scope.Decision{
+			Allowed: false,
+			Mode:    p.Scope.Mode,
+			Target:  host,
+			Reason: fmt.Sprintf(
+				"%q matched an include rule, but it resolves to %s, which does not (possible DNS rebinding): %s",
+				host, resolvedIP, ipDecision.Reason,
+			),
+		}
+	}
+	return ipDecision
+}
+
+func (p *Proxy) notify(d scope.Decision) {
+	if p.OnDecision != nil {
+		p.OnDecision(d)
+	}
+}
+
+// connect resolves and scope-checks host, logs the resulting
+// decision, and — depending on Mode — dials the checked address. It
+// always dials the specific net.IP that was just checked, never the
+// original hostname string: handing a hostname to net.Dial would let
+// it re-resolve independently, silently defeating the check above.
+//
+// A logging failure is a hard deny no Mode can override — per
+// THREAT_MODEL.md, an unaudited allow is indistinguishable from no
+// safety net at all.
+func (p *Proxy) connect(host, port string) (net.Conn, scope.Decision) {
+	resolvedIP, _ := p.resolveTarget(host)
+	decision := p.decide(host, resolvedIP)
+
+	if err := p.Audit.Log(decision); err != nil {
+		decision.Allowed = false
+		decision.Reason = fmt.Sprintf("audit log write failed (%v); denying rather than proceed unaudited", err)
+		p.notify(decision)
+		return nil, decision
+	}
+	p.notify(decision)
+
+	switch decision.Mode {
+	case scope.ModeDryRun:
+		return nil, decision
+	case scope.ModeWarn:
+		return p.dial(resolvedIP, port, decision)
+	default: // scope.ModeEnforce
+		if !decision.Allowed {
+			return nil, decision
+		}
+		return p.dial(resolvedIP, port, decision)
+	}
+}
+
+func (p *Proxy) dial(ip net.IP, port string, decision scope.Decision) (net.Conn, scope.Decision) {
+	if ip == nil {
+		return nil, decision
+	}
+	conn, err := net.Dial("tcp", net.JoinHostPort(ip.String(), port))
+	if err != nil {
+		return nil, decision
+	}
+	return conn, decision
+}
+
+// relay copies bytes in both directions until either side closes.
+// clientReader must be whatever already buffered the protocol
+// handshake bytes (a bufio.Reader wrapping client) rather than client
+// itself — a client that pipelines its first request right after the
+// handshake would otherwise have those already-buffered bytes
+// silently dropped.
+func relay(client net.Conn, clientReader io.Reader, target net.Conn) {
+	done := make(chan struct{}, 1)
+	go func() {
+		io.Copy(target, clientReader)
+		done <- struct{}{}
+	}()
+	io.Copy(client, target)
+	client.Close()
+	target.Close()
+	<-done
+}
