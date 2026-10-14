@@ -190,7 +190,7 @@ marque doctor                                       # preflight health check
 The engagement-context layer is a thin wrapper around the same
 `--scope`-driven commands underneath — it doesn't change `pkg/scope` or
 `pkg/audit`'s design, only the CLI's ergonomics on top of it. `doctor`
-and `engagement add/use/list` fold into Week 3 of the build plan (second
+and `engagement add/use/list` fold into Stage 3 of the build plan (second
 consumer / CLI polish), not a scope increase, since they're thin
 wrappers over the library, not new logic.
 

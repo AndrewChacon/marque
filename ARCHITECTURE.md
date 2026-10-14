@@ -73,7 +73,7 @@ don't want.
 - **`pkg/scope`** — the correctness-critical core. Scope file parsing,
   CIDR/domain matching, include/exclude resolution, engagement window
   checks. Zero knowledge of networking, proxies, or I/O beyond reading
-  the scope file itself. This is what Week 1 is actually about.
+  the scope file itself. This is what Stage 1 is actually about.
 - **`pkg/audit`** — hash-chained decision logging. Zero knowledge of
   scope semantics beyond the `Decision` struct it's handed; doesn't
   import `pkg/scope`, only the other way around, so a consumer could use
@@ -214,7 +214,7 @@ their own.
 
 ## Module path
 
-Needs a real GitHub org/username before `go.mod` is created in Week 1,
+Needs a real GitHub org/username before `go.mod` is created in Stage 1,
 since the module path becomes part of the public import path every
 third-party consumer writes (`import ".../redmarque/pkg/scope"`) and is
 awkward to change later without breaking them. Placeholder until
@@ -224,7 +224,7 @@ confirmed: `github.com/<org>/redmarque`.
 
 `pkg/scope` and `pkg/audit` are real public API from the first commit:
 godoc on every exported symbol, semver tags starting at `v0.x` while the
-API is still settling (expect it to move during Week 1 TDD), no breaking
+API is still settling (expect it to move during Stage 1 TDD), no breaking
 change without a major version bump once `v1.0.0` is tagged. The CLI
 (`cmd/marque`, `internal/*`) isn't held to the same compatibility bar —
 flag shapes can still evolve post-v1 without a major bump, since
