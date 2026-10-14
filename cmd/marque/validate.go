@@ -44,7 +44,7 @@ func newValidateCmdWithStore(injected *engagement.Store) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&scopeFlag, "scope", "", "path to scope.yaml (default: the active engagement)")
+	addScopeFlag(cmd, &scopeFlag)
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "print machine-readable JSON instead of a table")
 
 	return cmd
@@ -53,8 +53,7 @@ func newValidateCmdWithStore(injected *engagement.Store) *cobra.Command {
 func printValidationTable(w io.Writer, s *scope.Scope) {
 	now := time.Now()
 
-	fmt.Fprintf(w, "RedMarque — engagement: %s\n", engagementLabel(s))
-	fmt.Fprintf(w, "window: %s → %s (%s)\n", s.Start.Format("2006-01-02"), s.End.Format("2006-01-02"), windowSummary(s, now))
+	printEngagementHeader(w, s, now)
 	fmt.Fprintf(w, "mode: %s\n", s.Mode)
 
 	fmt.Fprintln(w, "\nIN SCOPE")
@@ -125,6 +124,24 @@ func windowStatus(s *scope.Scope, now time.Time) string {
 	default:
 		return "active"
 	}
+}
+
+// windowDateRange renders a scope's window as "YYYY-MM-DD →
+// YYYY-MM-DD" — the one place that date pair gets formatted, shared
+// by every command's header and the audit export's own window line.
+func windowDateRange(s *scope.Scope) string {
+	return fmt.Sprintf("%s → %s", s.Start.Format("2006-01-02"), s.End.Format("2006-01-02"))
+}
+
+// printEngagementHeader renders the "RedMarque — engagement: ..." /
+// "window: ..." pair every scope-aware command's output leads with,
+// per docs/UX_FLOW.md's requirement that the active engagement is
+// visible in every command's header, not just use/proxy. Anything
+// after the window line (mode, listen address, etc.) is each caller's
+// own business, since that varies by command.
+func printEngagementHeader(w io.Writer, s *scope.Scope, now time.Time) {
+	fmt.Fprintf(w, "RedMarque — engagement: %s\n", engagementLabel(s))
+	fmt.Fprintf(w, "window: %s (%s)\n", windowDateRange(s), windowSummary(s, now))
 }
 
 func windowSummary(s *scope.Scope, now time.Time) string {

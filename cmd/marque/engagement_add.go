@@ -18,7 +18,7 @@ func newEngagementAddCmd() *cobra.Command {
 	return newEngagementAddCmdWithStore(nil)
 }
 
-func newEngagementAddCmdWithStore(store *engagement.Store) *cobra.Command {
+func newEngagementAddCmdWithStore(injected *engagement.Store) *cobra.Command {
 	var scopeFlag string
 
 	cmd := &cobra.Command{
@@ -47,15 +47,15 @@ func newEngagementAddCmdWithStore(store *engagement.Store) *cobra.Command {
 				return err
 			}
 
-			st, err := storeOrDefault(store)
+			store, err := storeOrDefault(injected)
 			if err != nil {
 				return err
 			}
-			if err := st.Add(name, doc); err != nil {
+			if err := store.Add(name, doc); err != nil {
 				return err
 			}
 
-			fmt.Fprintf(cmd.OutOrStdout(), "added engagement %q (%s)\n", name, st.ScopePath(name))
+			fmt.Fprintf(cmd.OutOrStdout(), "added engagement %q (%s)\n", name, store.ScopePath(name))
 			return nil
 		},
 	}

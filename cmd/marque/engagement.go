@@ -59,6 +59,19 @@ func resolveScopePath(scopeFlag string, store *engagement.Store) (string, error)
 	return paths.scopePath, nil
 }
 
+// addScopeFlag registers the --scope flag every scope-aware command
+// accepts, with the same help text everywhere describing resolvePaths'
+// fallback-to-active-engagement behavior.
+func addScopeFlag(cmd *cobra.Command, scopeFlag *string) {
+	cmd.Flags().StringVar(scopeFlag, "scope", "", "path to scope.yaml (default: the active engagement)")
+}
+
+// addAuditLogFlag registers the --audit-log flag every command that
+// also resolves an audit log (not just a scope file) accepts.
+func addAuditLogFlag(cmd *cobra.Command, auditLogFlag *string) {
+	cmd.Flags().StringVar(auditLogFlag, "audit-log", "", "path to the audit log (default: derived from --scope or the active engagement)")
+}
+
 func newEngagementCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "engagement",

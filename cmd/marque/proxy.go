@@ -19,6 +19,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// defaultProxyAddr is marque proxy's own default --listen address —
+// the one canonical definition doctor's port-free check and
+// proxychains-config's default snippet both reference, rather than
+// each hardcoding "127.0.0.1:1080" and risking drift.
+const defaultProxyAddr = "127.0.0.1:1080"
+
 func newProxyCmd() *cobra.Command {
 	return newProxyCmdWithStore(nil)
 }
@@ -48,10 +54,10 @@ func newProxyCmdWithStore(injected *engagement.Store) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&scopeFlag, "scope", "", "path to scope.yaml (default: the active engagement)")
+	addScopeFlag(cmd, &scopeFlag)
 	cmd.Flags().BoolVar(&force, "force", false, "start even if the engagement window has ended")
-	cmd.Flags().StringVar(&listenAddr, "listen", "127.0.0.1:1080", "address to listen on")
-	cmd.Flags().StringVar(&auditLogFlag, "audit-log", "", "path to the audit log (default: derived from --scope or the active engagement)")
+	cmd.Flags().StringVar(&listenAddr, "listen", defaultProxyAddr, "address to listen on")
+	addAuditLogFlag(cmd, &auditLogFlag)
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "print each decision as a JSON object instead of a colored line")
 
 	return cmd
@@ -128,9 +134,7 @@ func runProxy(cmd *cobra.Command, store *engagement.Store, opts proxyOptions) er
 }
 
 func printProxyBanner(w io.Writer, s *scope.Scope, listenAddr string) {
-	now := time.Now()
-	fmt.Fprintf(w, "RedMarque — engagement: %s\n", engagementLabel(s))
-	fmt.Fprintf(w, "window: %s → %s (%s)\n", s.Start.Format("2006-01-02"), s.End.Format("2006-01-02"), windowSummary(s, now))
+	printEngagementHeader(w, s, time.Now())
 	fmt.Fprintf(w, "mode: %s · listening on %s\n\n", s.Mode, listenAddr)
 }
 

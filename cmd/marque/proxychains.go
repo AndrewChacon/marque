@@ -21,7 +21,7 @@ func newProxychainsConfigCmd() *cobra.Command {
 
 	// Default matches marque proxy's own default --listen, so the
 	// common case (nobody overrode either) just works together.
-	cmd.Flags().StringVar(&listenAddr, "listen", "127.0.0.1:1080", "the address marque proxy is (or will be) listening on")
+	cmd.Flags().StringVar(&listenAddr, "listen", defaultProxyAddr, "the address marque proxy is (or will be) listening on")
 	return cmd
 }
 

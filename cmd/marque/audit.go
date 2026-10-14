@@ -64,8 +64,8 @@ func newAuditCmdWithStore(injected *engagement.Store) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&scopeFlag, "scope", "", "path to scope.yaml (default: the active engagement)")
-	cmd.Flags().StringVar(&auditLogFlag, "audit-log", "", "path to the audit log (default: derived from --scope or the active engagement)")
+	addScopeFlag(cmd, &scopeFlag)
+	addAuditLogFlag(cmd, &auditLogFlag)
 	cmd.Flags().BoolVar(&tail, "tail", false, "live-stream new audit decisions as they're logged")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "print each decision as a JSON object instead of a colored line")
 

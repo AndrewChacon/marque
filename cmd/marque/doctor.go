@@ -11,10 +11,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// defaultProxyAddr is what marque proxy listens on when --listen
-// isn't given — the address doctor checks for availability.
-const defaultProxyAddr = "127.0.0.1:1080"
-
 type doctorCheck struct {
 	name   string
 	status string // "PASS", "WARN", or "FAIL"

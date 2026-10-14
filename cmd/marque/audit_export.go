@@ -59,8 +59,8 @@ func newAuditExportCmd(injected *engagement.Store) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&scopeFlag, "scope", "", "path to scope.yaml (default: the active engagement)")
-	cmd.Flags().StringVar(&auditLogFlag, "audit-log", "", "path to the audit log (default: derived from --scope or the active engagement)")
+	addScopeFlag(cmd, &scopeFlag)
+	addAuditLogFlag(cmd, &auditLogFlag)
 	cmd.Flags().StringVar(&format, "format", "json", `export format: "json" or "markdown"`)
 
 	return cmd
@@ -149,7 +149,7 @@ func exportMarkdown(w io.Writer, s *scope.Scope, entries []audit.Entry, verifyEr
 		fmt.Fprintf(w, "> **⚠ WARNING: audit log failed tamper verification: %s**\n>\n> The entries below are exported as-is but may not reflect what actually happened.\n\n", verifyErr)
 	}
 
-	fmt.Fprintf(w, "- Window: %s → %s (%s)\n", s.Start.Format("2006-01-02"), s.End.Format("2006-01-02"), windowStatus(s, time.Now()))
+	fmt.Fprintf(w, "- Window: %s (%s)\n", windowDateRange(s), windowStatus(s, time.Now()))
 	fmt.Fprintf(w, "- Mode: %s\n", s.Mode)
 
 	sum := summarizeEntries(entries)

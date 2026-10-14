@@ -58,8 +58,8 @@ func newRunCmdWithStore(injected *engagement.Store) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&scopeFlag, "scope", "", "path to scope.yaml (default: the active engagement)")
-	cmd.Flags().StringVar(&auditLogFlag, "audit-log", "", "path to the audit log (default: derived from --scope or the active engagement)")
+	addScopeFlag(cmd, &scopeFlag)
+	addAuditLogFlag(cmd, &auditLogFlag)
 	return cmd
 }
 
