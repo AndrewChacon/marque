@@ -14,6 +14,7 @@ to tester memory. Point it at a signed-off scope.yaml and it tells you,
 precisely, whether a target is authorized right now.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
+		Version:       versionDetails(),
 	}
 	root.AddCommand(newValidateCmd())
 	root.AddCommand(newProxyCmd())
@@ -22,5 +23,6 @@ precisely, whether a target is authorized right now.`,
 	root.AddCommand(newDoctorCmd())
 	root.AddCommand(newProxychainsConfigCmd())
 	root.AddCommand(newAuditCmd())
+	root.AddCommand(newVersionCmd())
 	return root
 }

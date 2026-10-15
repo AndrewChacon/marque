@@ -223,11 +223,11 @@ their own.
 
 ## Module path
 
-Needs a real GitHub org/username before `go.mod` is created in Stage 1,
-since the module path becomes part of the public import path every
-third-party consumer writes (`import ".../redmarque/pkg/scope"`) and is
-awkward to change later without breaking them. Placeholder until
-confirmed: `github.com/<org>/redmarque`.
+The module path is part of the public import path every third-party
+consumer writes, and is awkward to change later without breaking
+them — confirmed before `go.mod` was created in Stage 1:
+`github.com/AndrewChacon/red-marque` (import as
+`"github.com/AndrewChacon/red-marque/pkg/scope"`).
 
 ## Versioning
 

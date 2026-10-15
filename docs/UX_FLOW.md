@@ -31,8 +31,9 @@ which context is active" risk that model trades in for convenience.
 
 ## Single-engagement flow
 
-**1. Install** — one static binary. `brew install redmarque` / download
-a release binary / `go install .../cmd/marque@latest`. No venv, no
+**1. Install** — one static binary. Download a release binary, or
+`go install github.com/AndrewChacon/red-marque/cmd/marque@latest`.
+(Homebrew is a possible future option, not built for v1.) No venv, no
 dependency resolution, nothing to configure first.
 
 **2. Kick off the engagement** — pentester has a signed ROE in hand.

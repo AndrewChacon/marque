@@ -142,7 +142,7 @@ worse than one that's upfront about its edges.
 | `scope.yaml`                    | Trusted (operator-authored), but may be malformed by accident | Parsed defensively — fuzz-tested, never panics, fails closed on any parse error |
 | Network destinations (proxy/run)| Untrusted — arbitrary, including attacker-influenced DNS answers | Re-checked at the IP level at connection time, never trusted from an earlier hostname-only decision |
 | Audit log                       | Append-only output, not input              | Hash-chained so tampering is detectable on read/verify            |
-| Proxied traffic contents (headers, bodies) | Potentially sensitive (credentials) | Redacted by default from audit log; full capture requires explicit opt-in |
+| Proxied traffic contents (headers, bodies) | Potentially sensitive (credentials) | Never captured in the first place for CONNECT-tunneled HTTPS — the proxy relays encrypted bytes end-to-end without decrypting them, so there's nothing to redact. See `docs/stages/STAGE_3.md`'s "Design decision: no credential redaction" for the full reasoning. |
 
 ## Fail-closed, stated precisely
 
