@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"sync"
@@ -84,7 +85,7 @@ func TestTailAuditLog_PicksUpAppendedLines(t *testing.T) {
 	f, err := os.Open(path)
 	require.NoError(t, err)
 	defer f.Close()
-	_, err = f.Seek(0, os.SEEK_END)
+	_, err = f.Seek(0, io.SeekEnd)
 	require.NoError(t, err)
 
 	out := &syncBuffer{}

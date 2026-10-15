@@ -157,5 +157,5 @@ func execCommand(args []string) error {
 	if err != nil {
 		return fmt.Errorf("%s: %w", args[0], err)
 	}
-	return syscall.Exec(path, args, os.Environ())
+	return syscall.Exec(path, args, os.Environ()) //nolint:gosec // G204: executing an operator-chosen command is this function's entire purpose, already scope-checked by the caller before this runs
 }

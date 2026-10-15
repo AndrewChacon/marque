@@ -40,7 +40,9 @@ func (p *Proxy) serveSOCKS5(conn net.Conn, br *bufio.Reader) {
 
 	host, port, err := socks5ReadRequest(br)
 	if err != nil {
-		socks5WriteReply(conn, socks5ReplyGeneralFailure)
+		// Best-effort rejection notice — we're already bailing out, so
+		// a failed write here changes nothing.
+		_ = socks5WriteReply(conn, socks5ReplyGeneralFailure)
 		return
 	}
 	conn.SetReadDeadline(time.Time{})
@@ -51,7 +53,7 @@ func (p *Proxy) serveSOCKS5(conn net.Conn, br *bufio.Reader) {
 		if !decision.Allowed {
 			rep = socks5ReplyNotAllowedByRuleset
 		}
-		socks5WriteReply(conn, rep)
+		_ = socks5WriteReply(conn, rep)
 		return
 	}
 	defer target.Close()
