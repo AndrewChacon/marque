@@ -186,6 +186,7 @@ marque audit [--scope file.yaml] --tail             # live decision feed
 marque audit export --format json|markdown          # engagement-end artifact
 marque proxychains-config                           # emit ready-to-use snippet
 marque doctor                                       # preflight health check
+marque version                                      # print version/build info
 ```
 
 The engagement-context layer is a thin wrapper around the same
