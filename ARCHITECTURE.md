@@ -46,19 +46,20 @@ gap above, it just becomes a sixth entry in the list.
 ```
                      ┌─────────────────────────┐
 third-party agent -->│   pkg/scope (public)     │<-- marque validate
-loop (examples/      │   pkg/audit (public)     │<-- marque doctor
+loop (examples/      │   pkg/audit (public)     │<-- marque doctor, audit, run
 embedding)           └───────────▲─────────────┘<-- marque engagement *
                                   │
                       ┌───────────┴─────────────┐
                       │  internal/proxy          │
                       │  (SOCKS5 + HTTP CONNECT) │
-                      │  internal/run            │
-                      │  (argv exec wrapper)     │
+                      │  internal/engagement     │
+                      │  (named context storage) │
                       └───────────▲─────────────┘
                                   │
                       ┌───────────┴─────────────┐
                       │  cmd/marque (cobra CLI)  │
-                      │  wiring only             │
+                      │  wiring + run's own argv │
+                      │  regex-extraction/exec   │
                       └──────────────────────────┘
 ```
 
@@ -83,21 +84,32 @@ don't want.
   `pkg/scope`/`pkg/audit`, not a place where scope logic gets
   duplicated. If scope-matching logic is ever being written inside this
   package, that's a sign it belongs in `pkg/scope` instead.
-- **`internal/run`** — best-effort argv regex extraction + exec. Also a
-  pure consumer of `pkg/scope`/`pkg/audit`.
-- **`cmd/marque`** — cobra command tree. Wiring only: flag parsing,
-  reading the active engagement context, calling into the packages
-  above, formatting output. No scope logic, no proxy logic.
+- **`internal/engagement`** — named engagement-context storage (where
+  `~/.marque`'s active-context bookkeeping lives on disk). CLI-specific
+  state management, not a scope-matching consumer in the same sense as
+  `internal/proxy`.
+- **`cmd/marque`** — cobra command tree: flag parsing, reading the
+  active engagement context, calling into the packages above,
+  formatting output, plus `run`'s own best-effort argv regex-extraction
+  and exec logic (`cmd/marque/run.go`) — simple enough that it never
+  warranted a separate package the way the SOCKS5/HTTP CONNECT proxy
+  did. No scope-matching or audit-chain logic duplicated anywhere in
+  here; that stays in `pkg/scope` and `pkg/audit`.
 - **`examples/embedding`** — a runnable, standalone example of a
   hypothetical third-party agent loop calling `scope.Check()` directly,
   with no proxy involved. This is the proof that the "reusable library"
   positioning is real and not just a README claim.
 
-`internal/` (not `pkg/`) for `proxy` and `run` is deliberate: they are
-reference implementations, not part of the promised public API. Nothing
-stops a third party from writing their own proxy against `pkg/scope`
-instead of using ours — in fact that's the whole point — so we don't owe
+`internal/` (not `pkg/`) for `proxy` is deliberate: it's a reference
+implementation, not part of the promised public API. Nothing stops a
+third party from writing their own proxy against `pkg/scope` instead of
+using ours — in fact that's the whole point — so we don't owe
 `internal/proxy` the same compatibility guarantees we owe `pkg/scope`.
+`internal/engagement` is internal for a simpler reason: it's
+CLI-specific state management with no public-API aspirations at all —
+there's no "reference implementation" framing to apply, since nothing
+about engagement-context storage is meant to be reusable outside this
+CLI.
 
 ## `pkg/scope` — public API
 
@@ -130,7 +142,7 @@ const (
 Two check methods, not one — **confirmed**: the brief's illustrative
 `scope.Check(ip net.IP) Decision` covers re-checking a *resolved*
 address (the DNS-rebinding close), but the scope file also allows domain
-entries with wildcard subdomains, and `internal/run` needs to check a
+entries with wildcard subdomains, and `marque run` needs to check a
 hostname pulled out of argv before anything has been resolved at all.
 `CheckHost` matches against domain rules (and, for a literal IP-shaped
 string, falls through to the same logic as `Check`); `Check` matches
@@ -182,10 +194,10 @@ for.
 package audit
 
 type Entry struct {
-    Timestamp   time.Time
-    Decision    scope.Decision
-    Hash        string // sha256(prevHash + canonical entry bytes)
-    PrevHash    string
+    Timestamp time.Time
+    Decision  scope.Decision
+    PrevHash  string
+    Hash      string // sha256(prevHash + canonical entry bytes)
 }
 
 func Open(path string) (*Log, error)
@@ -209,9 +221,17 @@ rely on it.
 | Dependency | Used by | Why it's there |
 |---|---|---|
 | `gopkg.in/yaml.v3` | `pkg/scope` | Scope file format is YAML per the brief; this is the de facto standard YAML lib for Go and the only third-party dependency `pkg/scope` needs. |
-| `golang.org/x/net/proxy` | `internal/proxy` | SOCKS5 server-side primitives, maintained by the Go team — avoids hand-rolling a protocol implementation for code that isn't the correctness-critical core. |
 | `spf13/cobra` | `cmd/marque` | CLI wiring only; isolated to the one package (`cmd/marque`) that's allowed to not be minimal, since it's wiring, not library surface a third party inherits. |
 | `stretchr/testify` | all `_test.go` files | Test-only (`assert`/`require`), never shipped in the built binary or inherited by importers. |
+
+Notably absent: `golang.org/x/net/proxy`, despite SOCKS5 being exactly
+what one might reach for it. It has no server-side implementation
+at all (confirmed via `go doc`) — only client-side dialing — so
+`internal/proxy`'s SOCKS5 and HTTP CONNECT servers are hand-rolled
+instead. Not even pulled in for tests: doing so would re-trigger a
+`go.mod` version-floor bump fixed earlier, for a protocol small enough
+to drive by hand (see the hand-rolled test client in
+`internal/proxy/proxy_test.go`).
 
 `pkg/scope` and `pkg/audit` — the packages a third party actually
 imports — depend on nothing beyond the YAML parser (and `pkg/audit`
