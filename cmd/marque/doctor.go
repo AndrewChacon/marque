@@ -70,7 +70,7 @@ func runDoctorChecks(store *engagement.Store) []doctorCheck {
 		}
 	}
 
-	checks = append(checks, portFreeCheck(defaultProxyAddr))
+	checks = append(checks, portFreeCheck(defaultProxyAddr, store))
 	return checks
 }
 
@@ -85,13 +85,31 @@ func windowCheck(s *scope.Scope, now time.Time) doctorCheck {
 	}
 }
 
-func portFreeCheck(addr string) doctorCheck {
+// portFreeCheck's PASS/FAIL is always decided by the actual bind
+// result — a successful net.Listen is PASS regardless of what any PID
+// file claims, since the OS is ground truth and the PID file is only
+// ever consulted to explain a failure, never to override a success.
+// On failure, a PID file naming a live, matching marque proxy turns
+// an opaque bind error into a WARN ("this is just your own proxy
+// already running, not a problem") instead of a FAIL — doctor's own
+// exit code only fails on FAIL, so a backgrounded proxy never makes
+// doctor unhappy about itself.
+func portFreeCheck(addr string, store *engagement.Store) doctorCheck {
 	ln, err := net.Listen("tcp", addr)
-	if err != nil {
-		return doctorCheck{"proxy port " + addr, "FAIL", fmt.Sprintf("already in use: %v", err)}
+	if err == nil {
+		ln.Close()
+		return doctorCheck{"proxy port " + addr, "PASS", "free"}
 	}
-	ln.Close()
-	return doctorCheck{"proxy port " + addr, "PASS", "free"}
+
+	if info, alive, _ := readProxyPID(store); alive && info.ListenAddr == addr {
+		return doctorCheck{"proxy port " + addr, "WARN", fmt.Sprintf(
+			"a marque proxy is already running (pid %d) — `marque proxy stop` to stop it, or `marque proxy status` for details",
+			info.PID,
+		)}
+	}
+	return doctorCheck{"proxy port " + addr, "FAIL", fmt.Sprintf(
+		"already in use by something else (not a marque-managed proxy): %v", err,
+	)}
 }
 
 func printDoctorReport(w io.Writer, checks []doctorCheck) {

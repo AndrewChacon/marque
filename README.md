@@ -86,9 +86,24 @@ RedMarque — engagement: acme-2026q4 (Acme Corp)
 window: 2026-10-14 → 2026-10-28 (14 days remaining)
 mode: enforce · listening on 127.0.0.1:1080
 
+backgrounded — pid 48213
+  marque proxy status      check it's still running
+  marque audit --tail      watch decisions live
+  marque proxy stop        stop it
+```
+
+`marque proxy` backgrounds itself and hands your terminal straight
+back — no second window needed. `marque audit --tail` picks up the
+live decision feed whenever you want it:
+
+```
+$ marque audit --tail
 ALLOW  10.0.1.5               matched include 10.0.0.0/16
 BLOCK  10.0.5.9                matched exclude 10.0.5.0/24
 ```
+
+Want the original always-visible, blocking behavior instead? `marque
+proxy --foreground`.
 
 Already have tooling you don't want to proxy? `marque run -- nmap -sV
 target` checks argv against scope before exec'ing. Prefer proxychains?
@@ -123,7 +138,9 @@ marque engagement add <name> [--scope file.yaml]   # wizard or file import
 marque engagement use <name>                        # set active context
 marque engagement list                              # show all, with status
 marque validate [--scope file.yaml]                 # preflight check
-marque proxy [--scope file.yaml] [--force]          # SOCKS5 + HTTP CONNECT proxy
+marque proxy [--scope file.yaml] [--force] [--foreground]  # SOCKS5 + HTTP CONNECT proxy, backgrounds by default
+marque proxy stop                                   # stop the backgrounded proxy
+marque proxy status                                 # check whether it's running
 marque run [--scope file.yaml] -- <command>         # exec wrapper
 marque audit [--scope file.yaml] --tail             # live decision feed
 marque audit export --format json|markdown          # engagement-end artifact

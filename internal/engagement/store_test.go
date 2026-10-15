@@ -66,6 +66,12 @@ func TestStore_ScopePathAndAuditPathLayout(t *testing.T) {
 	assert.Equal(t, filepath.Join("/home/u/.marque", "engagements", "acme", "audit.jsonl"), s.AuditPath("acme"))
 }
 
+func TestStore_ProxyPIDAndLogPathLayout(t *testing.T) {
+	s := &Store{Root: "/home/u/.marque"}
+	assert.Equal(t, filepath.Join("/home/u/.marque", "proxy.pid"), s.ProxyPIDPath())
+	assert.Equal(t, filepath.Join("/home/u/.marque", "proxy.log"), s.ProxyLogPath())
+}
+
 func TestStore_ListIsEmptyThenSorted(t *testing.T) {
 	s := &Store{Root: t.TempDir()}
 

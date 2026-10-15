@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"net"
+	"os"
 	"testing"
 	"time"
 
@@ -75,17 +76,38 @@ func TestPortFreeCheck_FreePasses(t *testing.T) {
 	addr := ln.Addr().String()
 	require.NoError(t, ln.Close())
 
-	c := portFreeCheck(addr)
+	store := &engagement.Store{Root: t.TempDir()}
+	c := portFreeCheck(addr, store)
 	assert.Equal(t, "PASS", c.status)
 }
 
-func TestPortFreeCheck_InUseFails(t *testing.T) {
+func TestPortFreeCheck_InUseByUnrelatedProcessFails(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	defer ln.Close()
 
-	c := portFreeCheck(ln.Addr().String())
+	store := &engagement.Store{Root: t.TempDir()} // no proxy.pid at all
+	c := portFreeCheck(ln.Addr().String(), store)
 	assert.Equal(t, "FAIL", c.status)
+	assert.Contains(t, c.detail, "not a marque-managed proxy")
+}
+
+func TestPortFreeCheck_InUseByOwnDaemonWarns(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer ln.Close()
+	addr := ln.Addr().String()
+
+	store := &engagement.Store{Root: t.TempDir()}
+	require.NoError(t, writeProxyPID(store, proxyDaemonInfo{
+		PID:        os.Getpid(), // our own test process — guaranteed alive
+		ListenAddr: addr,
+		StartedAt:  time.Now(),
+	}))
+
+	c := portFreeCheck(addr, store)
+	assert.Equal(t, "WARN", c.status)
+	assert.Contains(t, c.detail, "marque proxy stop")
 }
 
 func TestPrintDoctorReport_AllPassing(t *testing.T) {

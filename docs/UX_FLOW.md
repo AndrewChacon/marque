@@ -79,18 +79,28 @@ output header — never silent.
 marque proxy
 ```
 
-Runs in the foreground by default — deliberate: a safety tool shouldn't
-silently live in the background where you forget it's there. Backgrounding
-via tmux/systemd is the user's choice, not the tool's default. Startup
-banner is unmissable:
+Backgrounds itself by default — single-window operation was an
+explicit, repeated ask from actually using this day to day: start it,
+get the terminal straight back, keep working in the same window. The
+startup banner prints once, with exactly how to check on it:
 
 ```
 RedMarque — engagement: acme-2026q4 (Acme Corp)
 window: 2026-10-14 → 2026-10-28 (14 days remaining)
 mode: enforce · listening on 127.0.0.1:1080
+
+backgrounded — pid 48213
+  marque proxy status      check it's still running
+  marque audit --tail      watch decisions live
+  marque proxy stop        stop it
 ```
 
-Live-streams one line per decision, color-coded (green allow / red block).
+Decisions are fully captured in the audit log either way (hash-chained,
+same as always) — `marque audit --tail` is how you watch them live once
+backgrounded; there's no separate live feed printed to a terminal that
+isn't there. `marque proxy --foreground` is the explicit opt-out back to
+the original always-visible, blocking, color-coded live feed, for
+scripting, containers, or anyone who specifically wants it.
 
 **6. Point existing tools at it** — zero new workflow to learn:
 - Burp → set upstream proxy to the printed address
@@ -180,7 +190,9 @@ marque engagement add <name> [--scope file.yaml]   # wizard or file import
 marque engagement use <name>                        # set active context
 marque engagement list                              # show all, with status
 marque validate [--scope file.yaml]                 # preflight check
-marque proxy [--scope file.yaml] [--force]          # SOCKS5 + HTTP CONNECT proxy
+marque proxy [--scope file.yaml] [--force] [--foreground]  # SOCKS5 + HTTP CONNECT proxy, backgrounds by default
+marque proxy stop                                   # stop the backgrounded proxy
+marque proxy status                                 # check whether it's running
 marque run [--scope file.yaml] -- <command>         # exec wrapper
 marque audit [--scope file.yaml] --tail             # live decision feed
 marque audit export --format json|markdown          # engagement-end artifact
@@ -206,3 +218,6 @@ lab target and confirm:
    banner never ambiguously shows the wrong client.
 3. `marque proxy` on an expired engagement refuses to start without
    `--force`.
+4. `marque proxy` returns control immediately with the backgrounded
+   banner, `marque proxy status` confirms it's running, and `marque
+   proxy stop` actually stops it — all from the same terminal.

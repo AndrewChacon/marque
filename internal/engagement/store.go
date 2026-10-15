@@ -18,6 +18,8 @@ import (
 //	Root/active                                — the active engagement's name
 //	Root/engagements/<name>/scope.yaml          — that engagement's scope file
 //	Root/engagements/<name>/audit.jsonl         — that engagement's audit log
+//	Root/proxy.pid                              — the backgrounded proxy's PID/address/start time, if running
+//	Root/proxy.log                              — its stdout/stderr, for crash debugging only
 type Store struct {
 	Root string
 }
@@ -47,6 +49,22 @@ func (s *Store) AuditPath(name string) string {
 
 func (s *Store) activeFile() string {
 	return filepath.Join(s.Root, "active")
+}
+
+// ProxyPIDPath is where the backgrounded proxy's PID/address/start
+// time live. A single global path, not per-engagement: marque proxy
+// can run via an explicit --scope with no active engagement at all,
+// and realistically only one backgrounded proxy makes sense at a time
+// (a second concurrent instance is still possible via --foreground).
+func (s *Store) ProxyPIDPath() string {
+	return filepath.Join(s.Root, "proxy.pid")
+}
+
+// ProxyLogPath is where the backgrounded proxy's stdout/stderr are
+// redirected — a crash/panic safety net, not a second decision log
+// (that's pkg/audit's job, via ScopePath's sibling AuditPath).
+func (s *Store) ProxyLogPath() string {
+	return filepath.Join(s.Root, "proxy.log")
 }
 
 // Active returns the currently active engagement's name, or "" if

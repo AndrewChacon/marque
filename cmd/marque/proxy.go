@@ -35,6 +35,7 @@ func newProxyCmdWithStore(injected *engagement.Store) *cobra.Command {
 	var listenAddr string
 	var auditLogFlag string
 	var jsonOut bool
+	var foreground bool
 
 	cmd := &cobra.Command{
 		Use:   "proxy",
@@ -50,6 +51,7 @@ func newProxyCmdWithStore(injected *engagement.Store) *cobra.Command {
 				listenAddr:   listenAddr,
 				auditLogFlag: auditLogFlag,
 				jsonOut:      jsonOut,
+				foreground:   foreground,
 			})
 		},
 	}
@@ -58,7 +60,11 @@ func newProxyCmdWithStore(injected *engagement.Store) *cobra.Command {
 	cmd.Flags().BoolVar(&force, "force", false, "start even if the engagement window has ended")
 	cmd.Flags().StringVar(&listenAddr, "listen", defaultProxyAddr, "address to listen on")
 	addAuditLogFlag(cmd, &auditLogFlag)
-	cmd.Flags().BoolVar(&jsonOut, "json", false, "print each decision as a JSON object instead of a colored line")
+	cmd.Flags().BoolVar(&jsonOut, "json", false, "print each decision as a JSON object instead of a colored line (--foreground only)")
+	cmd.Flags().BoolVar(&foreground, "foreground", false, "block in the foreground with a live decision feed instead of backgrounding (the pre-background default behavior)")
+
+	cmd.AddCommand(newProxyStopCmd(injected))
+	cmd.AddCommand(newProxyStatusCmd(injected))
 
 	return cmd
 }
@@ -69,6 +75,7 @@ type proxyOptions struct {
 	listenAddr   string
 	auditLogFlag string
 	jsonOut      bool
+	foreground   bool
 }
 
 // checkProxyPreflight is the --force gate: refuse to start on an
@@ -82,7 +89,28 @@ func checkProxyPreflight(s *scope.Scope, force bool, now time.Time) error {
 	return nil
 }
 
+// runProxy dispatches to one of three code paths: the re-exec'd
+// daemon child (detected via daemonChildEnv, set only by
+// startDaemonChild — never by a human), the --foreground opt-out
+// (today's original blocking behavior, completely unchanged), or the
+// new default of backgrounding itself. See proxy_daemon.go for the
+// latter two's shared machinery.
 func runProxy(cmd *cobra.Command, store *engagement.Store, opts proxyOptions) error {
+	if os.Getenv(daemonChildEnv) == "1" {
+		return runProxyChild(cmd, store, opts)
+	}
+	if opts.foreground {
+		return runProxyForeground(cmd, store, opts)
+	}
+	return daemonizeProxy(cmd, store, opts)
+}
+
+// runProxyForeground is marque proxy --foreground: blocks until
+// Ctrl-C, printing a live decision feed. This is the tool's entire
+// behavior before backgrounding became the default — preserved
+// verbatim as an explicit opt-out for scripting, containers, or
+// anyone who wants the old always-visible feed.
+func runProxyForeground(cmd *cobra.Command, store *engagement.Store, opts proxyOptions) error {
 	paths, err := resolvePaths(opts.scopeFlag, opts.auditLogFlag, store)
 	if err != nil {
 		return err
