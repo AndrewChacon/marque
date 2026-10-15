@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    # fmt/vet/lint are deterministic regardless of OS — one run is
+    # enough; build/test below is what actually needs the OS matrix.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "The following files are not gofmt'd:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: Install golangci-lint
+        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0
+
+      - name: golangci-lint
+        run: golangci-lint run ./...
+
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: go build
+        run: go build ./...
+
+      - name: go test -race
+        run: go test -race ./...
+
+      - name: Fuzz smoke test
+        # Short-mode only — this is a regression smoke check in CI, not
+        # a real fuzzing campaign. Each target gets its own invocation
+        # since `go test -fuzz` only accepts one target per run.
+        run: |
+          go test -fuzz='^FuzzParse$' -fuzztime=10s ./pkg/scope/...
+          go test -fuzz='^FuzzCheckHost$' -fuzztime=10s ./pkg/scope/...
+          go test -fuzz='^FuzzCheck$' -fuzztime=10s ./pkg/scope/...
+
+      - name: Coverage gate (pkg/scope, pkg/audit >= 85%)
+        # Scoped to the two public packages specifically, not a
+        # repo-wide average that would let the core hide behind
+        # well-tested CLI wiring — see ARCHITECTURE.md's Testing
+        # strategy section.
+        run: |
+          go test -coverprofile=coverage.out ./pkg/scope/... ./pkg/audit/...
+          go tool cover -func=coverage.out | tail -1
+          go tool cover -func=coverage.out | tail -1 | awk '{
+            gsub("%", "", $3)
+            if ($3 + 0 < 85) {
+              print "coverage " $3 "% is below the required 85% threshold"
+              exit 1
+            }
+            print "coverage " $3 "% meets the 85% threshold"
+          }'
