@@ -91,10 +91,12 @@ don't want.
 - **`cmd/marque`** — cobra command tree: flag parsing, reading the
   active engagement context, calling into the packages above,
   formatting output, plus `run`'s own best-effort argv regex-extraction
-  and exec logic (`cmd/marque/run.go`) — simple enough that it never
-  warranted a separate package the way the SOCKS5/HTTP CONNECT proxy
-  did. No scope-matching or audit-chain logic duplicated anywhere in
-  here; that stays in `pkg/scope` and `pkg/audit`.
+  and exec logic (`cmd/marque/run.go`) and `proxy`'s self-re-exec
+  backgrounding (`cmd/marque/proxy_daemon.go`) — both simple/CLI-
+  specific enough that neither warranted a separate package the way
+  the SOCKS5/HTTP CONNECT proxy did. No scope-matching or audit-chain
+  logic duplicated anywhere in here; that stays in `pkg/scope` and
+  `pkg/audit`.
 - **`examples/embedding`** — a runnable, standalone example of a
   hypothetical third-party agent loop calling `scope.Check()` directly,
   with no proxy involved. This is the proof that the "reusable library"

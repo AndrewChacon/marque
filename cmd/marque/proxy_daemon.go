@@ -187,9 +187,18 @@ func daemonizeProxy(cmd *cobra.Command, store *engagement.Store, opts proxyOptio
 	fmt.Fprint(out, hs.Banner)
 	fmt.Fprintf(out, "backgrounded — pid %d\n", hs.PID)
 	fmt.Fprintln(out, "  marque proxy status      check it's still running")
-	fmt.Fprintln(out, "  marque audit --tail      watch decisions live")
-	fmt.Fprintln(out, "  marque proxy stop        stop it")
+	printProxyNextSteps(out)
 	return nil
+}
+
+// printProxyNextSteps writes the "what to do next" lines shared by
+// the backgrounded-start banner and `marque proxy status` — "check
+// status" itself isn't included here, since status's own output
+// suggesting you check status again would be silly; daemonizeProxy
+// prints that one line itself, above this.
+func printProxyNextSteps(w io.Writer) {
+	fmt.Fprintln(w, "  marque audit --tail      watch decisions live")
+	fmt.Fprintln(w, "  marque proxy stop        stop it")
 }
 
 // runProxyChild is what actually runs inside the re-exec'd, detached

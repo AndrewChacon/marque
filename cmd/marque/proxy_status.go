@@ -39,7 +39,6 @@ func runProxyStatus(cmd *cobra.Command, store *engagement.Store) error {
 	if info.Engagement != "" {
 		fmt.Fprintf(out, "engagement: %s\n", info.Engagement)
 	}
-	fmt.Fprintln(out, "  marque audit --tail      watch decisions live")
-	fmt.Fprintln(out, "  marque proxy stop        stop it")
+	printProxyNextSteps(out)
 	return nil
 }
