@@ -122,6 +122,7 @@ func Load(path string) (*Scope, error)
 
 func (s *Scope) Check(ip net.IP) Decision
 func (s *Scope) CheckHost(host string) Decision
+func (s *Scope) CheckResolvedIP(ip net.IP) Decision
 
 type Decision struct {
     Allowed     bool
@@ -139,17 +140,31 @@ const (
 )
 ```
 
-Two check methods, not one — **confirmed**: the brief's illustrative
-`scope.Check(ip net.IP) Decision` covers re-checking a *resolved*
-address (the DNS-rebinding close), but the scope file also allows domain
-entries with wildcard subdomains, and `marque run` needs to check a
-hostname pulled out of argv before anything has been resolved at all.
-`CheckHost` matches against domain rules (and, for a literal IP-shaped
-string, falls through to the same logic as `Check`); `Check` matches
-against CIDR rules. Both are pure and synchronous — no DNS resolution
-happens inside `pkg/scope` itself, which is what keeps it dependency-free
-and usable from inside anyone's own event loop without surprising
-network calls.
+Three check methods, not one — **confirmed, and later refined**: the
+brief's illustrative `scope.Check(ip net.IP) Decision` covers a literal
+IP target directly, but the scope file also allows domain entries with
+wildcard subdomains, and `marque run` needs to check a hostname pulled
+out of argv before anything has been resolved at all. `CheckHost`
+matches against domain rules (and, for a literal IP-shaped string,
+falls through to `Check`); `Check` matches an IP against both the
+include and exclude CIDR rules.
+
+A hostname that passes `CheckHost` still needs its resolved address
+re-checked before anything connects to it — the DNS-rebinding close
+(see `THREAT_MODEL.md`) — but reusing `Check` for that recheck turned
+out to be a bug, not a design choice: it required the resolved IP to
+*also* independently match an include CIDR, a bar almost no real
+domain-only scope rule can clear (a third-party site's IP ranges are
+rarely stable or enumerable, so most scope files describe a target by
+domain alone with no CIDR at all). `CheckResolvedIP` exists
+specifically for this recheck — exclude-only, since the domain rule
+already established inclusion. It only catches a resolved address
+landing somewhere explicitly excluded, which is the actual threat
+being modeled.
+
+All three are pure and synchronous — no DNS resolution happens inside
+`pkg/scope` itself, which is what keeps it dependency-free and usable
+from inside anyone's own event loop without surprising network calls.
 
 ### Include/exclude resolution — confirmed
 

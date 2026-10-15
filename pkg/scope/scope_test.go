@@ -188,6 +188,61 @@ scope:
 	assert.Equal(t, "empty target", d.Reason)
 }
 
+// TestCheckResolvedIP_AllowsWithNoIncludeCIDRAtAll is the core
+// contract that distinguishes CheckResolvedIP from Check: it's
+// deliberately exclude-only, so a resolved address with nothing
+// excluding it is allowed even when the scope has no include CIDR
+// that would match it (or no CIDR rules at all) — the domain rule
+// that led here already established inclusion.
+func TestCheckResolvedIP_AllowsWithNoIncludeCIDRAtAll(t *testing.T) {
+	s := mustScope(t, `
+scope:
+  include:
+    - acme.test
+`)
+	d := s.CheckResolvedIP(net.ParseIP("203.0.113.50"))
+	assert.True(t, d.Allowed, d.Reason)
+}
+
+func TestCheckResolvedIP_DeniesOnExcludeMatch(t *testing.T) {
+	s := mustScope(t, `
+scope:
+  include:
+    - acme.test
+  exclude:
+    - 203.0.113.0/24
+`)
+	d := s.CheckResolvedIP(net.ParseIP("203.0.113.50"))
+	assert.False(t, d.Allowed)
+	assert.Contains(t, d.Reason, "matched exclude 203.0.113.0/24")
+}
+
+// TestCheckResolvedIP_IgnoresUnrelatedIncludeCIDR confirms the fixed
+// behavior isn't accidentally still requiring an include match: an
+// address outside every include CIDR in the scope, but not in any
+// exclude range either, must still be allowed.
+func TestCheckResolvedIP_IgnoresUnrelatedIncludeCIDR(t *testing.T) {
+	s := mustScope(t, `
+scope:
+  include:
+    - acme.test
+    - 10.0.0.0/16
+`)
+	d := s.CheckResolvedIP(net.ParseIP("203.0.113.50"))
+	assert.True(t, d.Allowed, d.Reason)
+}
+
+func TestCheckResolvedIP_NilIP(t *testing.T) {
+	s := mustScope(t, `
+scope:
+  include:
+    - acme.test
+`)
+	d := s.CheckResolvedIP(nil)
+	assert.False(t, d.Allowed)
+	assert.Equal(t, "no IP address provided", d.Reason)
+}
+
 func TestCheck_NilIP(t *testing.T) {
 	s := mustScope(t, `
 scope:

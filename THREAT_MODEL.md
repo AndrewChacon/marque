@@ -57,13 +57,18 @@ tester**. The distinction drives every scope decision below.
    two points in time are not guaranteed to agree — CDNs, round-robin
    DNS, geo-routing, and short TTLs all change answers between requests
    even with zero malicious intent anywhere in the chain. The resolved
-   IP is re-checked at connection time, independent of whatever the
-   hostname check already said, specifically to close this gap. This is
-   the one place the model does consider an adversarial-shaped failure
-   (a target's infrastructure answering differently than expected)
-   without requiring the adversary to be *attacking RedMarque* — it's
-   just a mechanical correctness property of checking addresses, not
-   names.
+   IP is re-checked at connection time against the exclude rules,
+   independent of whatever the hostname check already said — deliberately
+   not a second, independent inclusion test (most real scope files
+   describe a target by domain alone, with no CIDR a resolved address
+   could ever separately match — requiring one would make domain-only
+   include rules unusable), but enough to catch the failure mode that
+   actually matters: a nominally in-scope hostname resolving into a
+   range the scope file explicitly excludes. This is the one place the
+   model does consider an adversarial-shaped failure (a target's
+   infrastructure answering differently than expected) without
+   requiring the adversary to be *attacking RedMarque* — it's just a
+   mechanical correctness property of checking addresses, not names.
 
 4. **Continuing to operate after the engagement window has closed.** An
    expired window is as much a scope violation as a wrong IP — the

@@ -29,12 +29,12 @@ type Decision struct {
 	Reason string `json:"reason"`
 }
 
-// Check reports whether ip is in scope right now. This is the
-// re-check that must be performed against a resolved address at
-// connection time, independent of any earlier hostname-based
-// decision, to close the DNS-rebinding gap described in
-// THREAT_MODEL.md — a hostname check and the IP it eventually
-// resolves to are not guaranteed to agree.
+// Check reports whether ip is in scope right now: denied if it falls
+// in an exclude CIDR, allowed if it falls in an include CIDR, denied
+// otherwise. Used directly for a literal-IP target; a hostname target
+// uses CheckHost instead, which re-validates its resolved address
+// with CheckResolvedIP rather than this method — see CheckResolvedIP
+// for why.
 func (s *Scope) Check(ip net.IP) Decision {
 	if ip == nil {
 		return s.decide(false, "no IP address provided", "", "")
@@ -79,6 +79,37 @@ func (s *Scope) CheckHost(host string) Decision {
 		}
 	}
 	return s.decide(false, "no include rule matched", "", h)
+}
+
+// CheckResolvedIP re-validates ip — the address a hostname that
+// already passed CheckHost resolved to — against only the exclude
+// rules. This is the DNS-rebinding close described in
+// THREAT_MODEL.md: a hostname check and the IP it eventually resolves
+// to are not guaranteed to agree, so the resolved address gets a
+// second look before anything connects to it.
+//
+// Deliberately exclude-only, not a full Check: the hostname's
+// inclusion already came from its own domain rule, so this doesn't
+// re-demand the resolved address independently match some CIDR
+// include rule too — most real scope files describe a target by
+// domain alone with no corresponding CIDR at all (a third-party
+// site's IP ranges are rarely stable or enumerable), and requiring
+// one would make domain-only include rules unusable in practice. What
+// this does catch is the one failure mode that actually matters here:
+// a nominally in-scope hostname resolving into a range the scope file
+// explicitly excludes.
+func (s *Scope) CheckResolvedIP(ip net.IP) Decision {
+	if ip == nil {
+		return s.decide(false, "no IP address provided", "", "")
+	}
+	target := ip.String()
+
+	for _, r := range s.excludeCIDRs {
+		if r.ipnet.Contains(ip) {
+			return s.decide(false, fmt.Sprintf("matched exclude %s", r.raw), r.raw, target)
+		}
+	}
+	return s.decide(true, "resolved address is not in any excluded range", "", target)
 }
 
 func normalizeHost(host string) string {

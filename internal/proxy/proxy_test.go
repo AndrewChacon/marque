@@ -324,33 +324,72 @@ scope:
 
 // TestProxy_DNSRebinding is the test the project brief calls out by
 // name: a hostname that passes CheckHost must still be blocked if the
-// address it actually resolves to doesn't pass Check on its own —
-// proving the re-check at connection time isn't bypassable by a
-// hostname whose DNS answer doesn't match what the scope file's
-// domain rule implies.
+// address it actually resolves to lands somewhere the scope file
+// explicitly excludes — proving the re-check at connection time isn't
+// bypassable by a hostname whose DNS answer points somewhere the
+// operator specifically carved out. The recheck is exclude-only (see
+// scope.CheckResolvedIP's doc comment): resolving outside of some
+// unrelated include CIDR is not itself suspicious, since most real
+// scope files describe a target by domain alone with no CIDR at all —
+// only resolving into an exclude range is the actual rebinding
+// concern this guards against.
 func TestProxy_DNSRebinding(t *testing.T) {
 	targetAddr, connCount := startEchoTarget(t)
 	targetHost, targetPort := splitHostPortInt(t, targetAddr)
 
-	s := mustScope(t, `
+	s := mustScope(t, fmt.Sprintf(`
 scope:
   include:
     - rebind.test
-    - 10.0.0.0/8
-`)
+  exclude:
+    - %s/32
+`, targetHost))
 	resolver := &fakeResolver{answers: map[string]net.IP{
-		"rebind.test": net.ParseIP(targetHost), // resolves to the real target's IP, which is NOT in 10.0.0.0/8
+		"rebind.test": net.ParseIP(targetHost), // resolves into the explicitly excluded range
 	}}
 	proxyAddr, decisions := startProxy(t, s, resolver)
 
 	conn, rep := socks5Connect(t, proxyAddr, socks5ATYPDomain, "rebind.test", targetPort)
 	defer conn.Close()
-	assert.Equal(t, byte(socks5ReplyNotAllowedByRuleset), rep, "hostname-allowed but IP-denied must still be blocked")
+	assert.Equal(t, byte(socks5ReplyNotAllowedByRuleset), rep, "hostname-allowed but resolved-into-excluded-range must still be blocked")
 	assert.Equal(t, int32(0), atomic.LoadInt32(connCount))
 
 	d := <-decisions
 	assert.False(t, d.Allowed)
 	assert.Contains(t, d.Reason, "DNS rebinding")
+}
+
+// TestProxy_DomainOnlyInclude_NoCIDRNeeded is the regression test for
+// the bug where any domain-only include rule — the common case, since
+// most real scope files describe a target by domain, not CIDR, and a
+// third-party site's IP ranges are rarely stable or enumerable —
+// could never actually succeed through the proxy. The DNS-rebinding
+// recheck used to require the resolved IP to also independently match
+// an include CIDR, a bar no domain without one could ever clear. It
+// must now succeed on a domain-only scope with no CIDR rule at all,
+// regardless of what IP the domain happens to resolve to, as long as
+// that address isn't itself excluded.
+func TestProxy_DomainOnlyInclude_NoCIDRNeeded(t *testing.T) {
+	targetAddr, _ := startEchoTarget(t)
+	targetHost, targetPort := splitHostPortInt(t, targetAddr)
+
+	s := mustScope(t, `
+scope:
+  include:
+    - facebook.test
+`)
+	resolver := &fakeResolver{answers: map[string]net.IP{"facebook.test": net.ParseIP(targetHost)}}
+	proxyAddr, decisions := startProxy(t, s, resolver)
+
+	conn, rep := socks5Connect(t, proxyAddr, socks5ATYPDomain, "facebook.test", targetPort)
+	defer conn.Close()
+	require.Equal(t, byte(socks5ReplySucceeded), rep, "a domain-only include rule must work with no CIDR at all")
+	roundtrip(t, conn, "domain-only include, no CIDR needed")
+
+	d := <-decisions
+	assert.True(t, d.Allowed)
+	assert.Equal(t, "facebook.test", d.Target, "the logged target should be the hostname, not the resolved IP")
+	assert.Contains(t, d.Reason, "matched include facebook.test")
 }
 
 func TestProxy_WarnMode_RelaysDeniedTrafficButLogsIt(t *testing.T) {
@@ -407,17 +446,18 @@ func TestProxy_Resolver_DefaultsToNetDefaultResolver(t *testing.T) {
 
 // TestProxy_HostnameFullyAllowed is the full happy path for a genuine
 // (non-IP-literal) hostname: CheckHost allows it, the resolver
-// answers, and the resolved IP also passes its own check.
+// answers, and the resolved IP isn't excluded. Deliberately no CIDR
+// rule in this scope at all — see TestProxy_DomainOnlyInclude_NoCIDRNeeded's
+// doc comment for why that's the realistic shape of a scope file.
 func TestProxy_HostnameFullyAllowed(t *testing.T) {
 	targetAddr, _ := startEchoTarget(t)
 	targetHost, targetPort := splitHostPortInt(t, targetAddr)
 
-	s := mustScope(t, fmt.Sprintf(`
+	s := mustScope(t, `
 scope:
   include:
     - acme.test
-    - %s/32
-`, targetHost))
+`)
 	resolver := &fakeResolver{answers: map[string]net.IP{"acme.test": net.ParseIP(targetHost)}}
 	proxyAddr, decisions := startProxy(t, s, resolver)
 

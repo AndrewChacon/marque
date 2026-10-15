@@ -128,8 +128,10 @@ func (p *Proxy) resolveTarget(host string) (net.IP, error) {
 // decide is the DNS-rebinding close described in THREAT_MODEL.md: a
 // hostname-based decision and the IP it actually resolves to are not
 // guaranteed to agree, so a hostname that passes CheckHost still has
-// its resolved address re-checked with Check before anything is
-// trusted.
+// its resolved address re-checked with CheckResolvedIP before
+// anything is trusted — see that method's doc comment for why this
+// is deliberately an exclude-only recheck, not a second, independent
+// CIDR match.
 func (p *Proxy) decide(host string, resolvedIP net.IP) scope.Decision {
 	if ip := net.ParseIP(host); ip != nil {
 		return p.Scope.Check(ip)
@@ -148,19 +150,25 @@ func (p *Proxy) decide(host string, resolvedIP net.IP) scope.Decision {
 		}
 	}
 
-	ipDecision := p.Scope.Check(resolvedIP)
+	ipDecision := p.Scope.CheckResolvedIP(resolvedIP)
 	if !ipDecision.Allowed {
 		return scope.Decision{
 			Allowed: false,
 			Mode:    p.Scope.Mode,
 			Target:  host,
 			Reason: fmt.Sprintf(
-				"%q matched an include rule, but it resolves to %s, which does not (possible DNS rebinding): %s",
+				"%q matched an include rule, but it resolves to %s, which is explicitly excluded (possible DNS rebinding): %s",
 				host, resolvedIP, ipDecision.Reason,
 			),
 		}
 	}
-	return ipDecision
+	return scope.Decision{
+		Allowed:     true,
+		Mode:        p.Scope.Mode,
+		Target:      host,
+		MatchedRule: hostDecision.MatchedRule,
+		Reason:      fmt.Sprintf("%s (resolved to %s)", hostDecision.Reason, resolvedIP),
+	}
 }
 
 func (p *Proxy) notify(d scope.Decision) {
