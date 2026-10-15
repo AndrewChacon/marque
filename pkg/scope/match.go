@@ -9,7 +9,7 @@ import (
 
 // Decision records the outcome of a single scope check: whether the
 // target is allowed, which rule (if any) decided that, and why. It is
-// also the unit pkg/audit logs — see audit.Log.
+// also the unit that pkg/audit logs — see audit.Log.
 type Decision struct {
 	// Allowed is the scope outcome: true if Target is in scope and the
 	// engagement window is currently open.
