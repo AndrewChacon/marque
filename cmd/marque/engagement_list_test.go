@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -72,6 +73,49 @@ func TestPrintEngagementList_OpenEndedShowsOngoing(t *testing.T) {
 
 	assert.Contains(t, output, "ongoing")
 	assert.Contains(t, output, "active")
+}
+
+func TestPrintEngagementListJSON_IncludesParseErrorAndActiveFlag(t *testing.T) {
+	store := &engagement.Store{Root: t.TempDir()}
+	now := time.Now()
+	addTestEngagement(t, store, "good", now.Add(-time.Hour), now.Add(time.Hour))
+	require.NoError(t, store.Add("broken", []byte("not valid yaml: [")))
+
+	var out bytes.Buffer
+	require.NoError(t, printEngagementListJSON(&out, store, []string{"broken", "good"}, "good", now))
+
+	var entries []engagementListEntry
+	require.NoError(t, json.Unmarshal(out.Bytes(), &entries))
+	require.Len(t, entries, 2)
+
+	byName := map[string]engagementListEntry{}
+	for _, e := range entries {
+		byName[e.Name] = e
+	}
+	assert.NotEmpty(t, byName["broken"].Error)
+	assert.False(t, byName["broken"].Active)
+	assert.Empty(t, byName["good"].Error)
+	assert.True(t, byName["good"].Active)
+	assert.Equal(t, "active", byName["good"].Status)
+}
+
+func TestEngagementListCmd_JSON_RunsEndToEnd(t *testing.T) {
+	store := &engagement.Store{Root: t.TempDir()}
+	addTestEngagement(t, store, "acme-2026q4", time.Now().Add(-time.Hour), time.Now().Add(time.Hour))
+	require.NoError(t, store.SetActive("acme-2026q4"))
+
+	cmd := newEngagementListCmdWithStore(store)
+	cmd.SetArgs([]string{"--json"})
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+
+	require.NoError(t, cmd.Execute())
+
+	var entries []engagementListEntry
+	require.NoError(t, json.Unmarshal(out.Bytes(), &entries))
+	require.Len(t, entries, 1)
+	assert.Equal(t, "acme-2026q4", entries[0].Name)
+	assert.True(t, entries[0].Active)
 }
 
 func TestEngagementListCmd_RunsEndToEnd(t *testing.T) {

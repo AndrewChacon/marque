@@ -49,6 +49,7 @@ func TestResolvePaths_NoScopeNoActiveEngagementIsAnActionableError(t *testing.T)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "--scope")
 	assert.Contains(t, err.Error(), "engagement use")
+	assert.Contains(t, err.Error(), "engagement add")
 }
 
 func TestStoreOrDefault(t *testing.T) {

@@ -136,3 +136,15 @@ func TestRunProxy_NoScopeNoActiveEngagementReturnsEarly(t *testing.T) {
 	assert.Contains(t, err.Error(), "--scope")
 	assert.Contains(t, err.Error(), "engagement use")
 }
+
+func TestNewProxyCmd_JSONWithoutForegroundIsRejected(t *testing.T) {
+	store := &engagement.Store{Root: t.TempDir()}
+	cmd := newProxyCmdWithStore(store)
+	cmd.SilenceErrors = true
+	cmd.SetArgs([]string{"--json"})
+	cmd.SetOut(&bytes.Buffer{})
+
+	err := cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--foreground")
+}

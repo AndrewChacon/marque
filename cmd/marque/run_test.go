@@ -100,7 +100,7 @@ scope:
 	err := checkRunTargets(&out, s, log, []string{"nmap", "10.0.1.5", "192.168.1.1"})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "1 target(s) out of scope")
-	assert.Contains(t, out.String(), "BLOCKED")
+	assert.Contains(t, out.String(), "BLOCK")
 	assert.Contains(t, out.String(), "192.168.1.1")
 	assert.Len(t, log.entries, 2, "both the allowed and the denied target must still be logged")
 }
@@ -191,5 +191,5 @@ scope:
 
 	err := cmd.Execute()
 	require.Error(t, err, "an out-of-scope target in argv must refuse before ever exec'ing")
-	assert.Contains(t, out.String(), "BLOCKED")
+	assert.Contains(t, out.String(), "BLOCK")
 }

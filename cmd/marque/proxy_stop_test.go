@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"os/exec"
 	"testing"
 	"time"
@@ -17,7 +18,7 @@ func TestRunProxyStop_NoPIDFile(t *testing.T) {
 	cmd := newProxyStopCmd(store)
 	cmd.SetOut(&out)
 
-	require.NoError(t, runProxyStop(cmd, store))
+	require.NoError(t, runProxyStop(cmd, store, false))
 	assert.Contains(t, out.String(), "no backgrounded proxy is running")
 }
 
@@ -30,7 +31,7 @@ func TestRunProxyStop_StalePIDFileCleanedUp(t *testing.T) {
 	cmd := newProxyStopCmd(store)
 	cmd.SetOut(&out)
 
-	require.NoError(t, runProxyStop(cmd, store))
+	require.NoError(t, runProxyStop(cmd, store, false))
 	assert.Contains(t, out.String(), "no backgrounded proxy is running")
 	assert.Contains(t, out.String(), "stale")
 }
@@ -50,7 +51,7 @@ func TestRunProxyStop_LiveProcessGracefulStop(t *testing.T) {
 	cmd := newProxyStopCmd(store)
 	cmd.SetOut(&out)
 
-	require.NoError(t, runProxyStop(cmd, store))
+	require.NoError(t, runProxyStop(cmd, store, false))
 	assert.Contains(t, out.String(), "stopped proxy")
 	assert.False(t, processAlive(sleeper.Process.Pid))
 
@@ -76,7 +77,7 @@ func TestRunProxyStop_EscalatesToSIGKILLWhenUnresponsive(t *testing.T) {
 	cmd := newProxyStopCmd(store)
 	cmd.SetOut(&out)
 
-	require.NoError(t, runProxyStop(cmd, store))
+	require.NoError(t, runProxyStop(cmd, store, false))
 	assert.Contains(t, out.String(), "SIGKILL")
 
 	// Give the kernel a moment to actually reap/report the kill.
@@ -87,6 +88,42 @@ func TestRunProxyStop_EscalatesToSIGKILLWhenUnresponsive(t *testing.T) {
 	_, alive, err := readProxyPID(store)
 	require.NoError(t, err)
 	assert.False(t, alive)
+}
+
+func TestRunProxyStop_JSON_NoPIDFile(t *testing.T) {
+	store := &engagement.Store{Root: t.TempDir()}
+	var out bytes.Buffer
+	cmd := newProxyStopCmd(store)
+	cmd.SetOut(&out)
+
+	require.NoError(t, runProxyStop(cmd, store, true))
+
+	var got proxyStopJSON
+	require.NoError(t, json.Unmarshal(out.Bytes(), &got))
+	assert.Equal(t, "none", got.Action)
+}
+
+func TestRunProxyStop_JSON_Stopped(t *testing.T) {
+	restoreGrace := setShortProxyStopGrace(t)
+	defer restoreGrace()
+
+	store := &engagement.Store{Root: t.TempDir()}
+	sleeper := exec.Command("sleep", "30")
+	require.NoError(t, sleeper.Start())
+	t.Cleanup(func() { _ = sleeper.Process.Kill() })
+	go func() { _ = sleeper.Wait() }()
+	require.NoError(t, writeProxyPID(store, proxyDaemonInfo{PID: sleeper.Process.Pid, ListenAddr: "127.0.0.1:1080"}))
+
+	var out bytes.Buffer
+	cmd := newProxyStopCmd(store)
+	cmd.SetOut(&out)
+
+	require.NoError(t, runProxyStop(cmd, store, true))
+
+	var got proxyStopJSON
+	require.NoError(t, json.Unmarshal(out.Bytes(), &got))
+	assert.Equal(t, "stopped", got.Action)
+	assert.Equal(t, sleeper.Process.Pid, got.PID)
 }
 
 // TestWaitForExit_CatchesDeathDuringTheFinalSleep is the regression

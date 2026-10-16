@@ -57,7 +57,7 @@ func runDoctorChecks(store *engagement.Store) []doctorCheck {
 	case err != nil:
 		checks = append(checks, doctorCheck{"active engagement", "FAIL", fmt.Sprintf("could not read: %v", err)})
 	case active == "":
-		checks = append(checks, doctorCheck{"active engagement", "FAIL", "none set — run `marque engagement use <name>`"})
+		checks = append(checks, doctorCheck{"active engagement", "FAIL", "none set — " + noActiveEngagementRemedy})
 	default:
 		checks = append(checks, doctorCheck{"active engagement", "PASS", active})
 

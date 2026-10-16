@@ -357,6 +357,7 @@ scope:
 	d := <-decisions
 	assert.False(t, d.Allowed)
 	assert.Contains(t, d.Reason, "DNS rebinding")
+	assert.Equal(t, targetHost+"/32", d.MatchedRule, "the exclude CIDR that caused the rebinding denial must be in the structured field, not just free text")
 }
 
 // TestProxy_DomainOnlyInclude_NoCIDRNeeded is the regression test for
@@ -479,7 +480,7 @@ scope:
   include:
     - 10.0.0.0/8
 `)
-	proxyAddr, decisions := startProxy(t, s, &fakeResolver{}) // no answers configured — must never be called
+	proxyAddr, decisions := startProxy(t, s, &fakeResolver{}) // no answers configured — its answer must not matter, since CheckHost denies before resolvedIP is ever consulted
 
 	conn, rep := socks5Connect(t, proxyAddr, socks5ATYPDomain, "evil.example", 80)
 	defer conn.Close()
@@ -509,6 +510,7 @@ scope:
 	d := <-decisions
 	assert.False(t, d.Allowed)
 	assert.Contains(t, d.Reason, "could not be resolved")
+	assert.Contains(t, d.Reason, "fakeResolver: no answer configured for", "the specific resolution error must be surfaced, not just the generic reason")
 }
 
 func TestProxy_DialFailureWhenNothingListening(t *testing.T) {

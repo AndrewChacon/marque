@@ -7,7 +7,7 @@ import "os"
 // decision stream so there's one place that knows about ANSI codes
 // and the NO_COLOR convention, not two.
 func colorize(ansiCode, msg string) string {
-	if os.Getenv("NO_COLOR") != "" {
+	if _, noColor := os.LookupEnv("NO_COLOR"); noColor {
 		return msg
 	}
 	return "\x1b[" + ansiCode + "m" + msg + "\x1b[0m"

@@ -61,8 +61,10 @@ marque validate
 ```
 
 Prints a human-readable table: what's in scope, what's excluded, days
-remaining in the engagement window, any ambiguous include/exclude
-overlaps. Has to be scannable in five seconds, not a wall of JSON.
+remaining in the engagement window. Has to be scannable in five
+seconds, not a wall of JSON. (Exclude always wins over include,
+checked first — there's no actual ambiguity left to flag once that
+rule is applied, which is why this doesn't attempt overlap detection.)
 
 **4. Activate it**
 

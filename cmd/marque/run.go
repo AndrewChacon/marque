@@ -176,7 +176,7 @@ func checkRunTargets(w io.Writer, s *scope.Scope, log auditLogger, args []string
 		return nil
 	}
 	for _, d := range denied {
-		fmt.Fprintln(w, colorize(colorRed, fmt.Sprintf("BLOCKED: %s — %s", d.Target, d.Reason)))
+		printDecision(w, d, false)
 	}
 	return fmt.Errorf("refusing to run: %d target(s) out of scope", len(denied))
 }

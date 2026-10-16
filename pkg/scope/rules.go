@@ -88,7 +88,7 @@ func cidrError(raw string, err error) error {
 var domainLabelRE = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
 
 func parseDomainRule(raw string) (domainRule, error) {
-	s := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(raw), "."))
+	s := normalizeHost(raw)
 
 	wildcard := false
 	base := s

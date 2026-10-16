@@ -40,6 +40,9 @@ func newProxyCmdWithStore(injected *engagement.Store) *cobra.Command {
 		Use:   "proxy",
 		Short: "Run the SOCKS5 + HTTP CONNECT proxy, enforcing scope on everything routed through it",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if jsonOut && !foreground {
+				return fmt.Errorf("--json only applies with --foreground (the backgrounded default has no live terminal feed to format — use `marque audit --tail --json` instead)")
+			}
 			store, err := storeOrDefault(injected)
 			if err != nil {
 				return err

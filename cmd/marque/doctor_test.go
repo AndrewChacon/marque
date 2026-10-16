@@ -19,6 +19,7 @@ func TestRunDoctorChecks_NoActiveEngagement(t *testing.T) {
 	require.NotEmpty(t, checks)
 	assert.Equal(t, "FAIL", checks[0].status)
 	assert.Contains(t, checks[0].detail, "engagement use")
+	assert.Contains(t, checks[0].detail, "engagement add")
 
 	// The port check is independent and must still run.
 	names := checkNames(checks)

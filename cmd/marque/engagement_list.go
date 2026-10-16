@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"text/tabwriter"
@@ -16,7 +17,9 @@ func newEngagementListCmd() *cobra.Command {
 }
 
 func newEngagementListCmdWithStore(injected *engagement.Store) *cobra.Command {
-	return &cobra.Command{
+	var jsonOut bool
+
+	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List all known engagements",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -33,10 +36,16 @@ func newEngagementListCmdWithStore(injected *engagement.Store) *cobra.Command {
 				return err
 			}
 
+			if jsonOut {
+				return printEngagementListJSON(cmd.OutOrStdout(), store, names, active, time.Now())
+			}
 			printEngagementList(cmd.OutOrStdout(), store, names, active, time.Now())
 			return nil
 		},
 	}
+
+	cmd.Flags().BoolVar(&jsonOut, "json", false, "print machine-readable JSON instead of a table")
+	return cmd
 }
 
 // printEngagementList's STATUS column reuses the existing
@@ -72,4 +81,36 @@ func printEngagementList(w io.Writer, store *engagement.Store, names []string, a
 		fmt.Fprintf(tw, "%s %s\t%s\t%s\t%s\n", marker, name, s.Client, window, windowStatus(s, now))
 	}
 	tw.Flush()
+}
+
+type engagementListEntry struct {
+	Name   string     `json:"name"`
+	Active bool       `json:"active"`
+	Client string     `json:"client,omitempty"`
+	Start  *time.Time `json:"start,omitempty"`
+	End    *time.Time `json:"end,omitempty"`
+	Status string     `json:"status,omitempty"`
+	Error  string     `json:"error,omitempty"`
+}
+
+func printEngagementListJSON(w io.Writer, store *engagement.Store, names []string, active string, now time.Time) error {
+	var entries []engagementListEntry
+	for _, name := range names {
+		entry := engagementListEntry{Name: name, Active: name == active}
+		s, err := scope.Load(store.ScopePath(name))
+		if err != nil {
+			entry.Error = err.Error()
+			entries = append(entries, entry)
+			continue
+		}
+		start := s.Start
+		entry.Client = s.Client
+		entry.Start = &start
+		entry.End = s.End
+		entry.Status = windowStatus(s, now)
+		entries = append(entries, entry)
+	}
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	return enc.Encode(entries)
 }

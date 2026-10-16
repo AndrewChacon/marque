@@ -508,6 +508,19 @@ scope:
 	assert.Equal(t, "", s2.Client, "omitting client must not be an error")
 }
 
+func TestParse_TrimsWhitespaceFromStart(t *testing.T) {
+	doc := fmt.Sprintf(`
+engagement:
+  name: test
+  start: "  %s  "
+scope:
+  include:
+    - 10.0.0.0/16
+`, time.Now().Add(-time.Hour).Format(time.RFC3339))
+	_, err := Parse([]byte(doc))
+	require.NoError(t, err)
+}
+
 func TestLoad_FileNotFound(t *testing.T) {
 	_, err := Load("/nonexistent/path/scope.yaml")
 	require.Error(t, err)

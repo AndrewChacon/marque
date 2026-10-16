@@ -41,10 +41,8 @@ func (s *Scope) Check(ip net.IP) Decision {
 	}
 	target := ip.String()
 
-	for _, r := range s.excludeCIDRs {
-		if r.ipnet.Contains(ip) {
-			return s.decide(false, fmt.Sprintf("matched exclude %s", r.raw), r.raw, target)
-		}
+	if r, ok := s.matchedExclude(ip); ok {
+		return s.decide(false, fmt.Sprintf("matched exclude %s", r.raw), r.raw, target)
 	}
 	for _, r := range s.includeCIDRs {
 		if r.ipnet.Contains(ip) {
@@ -104,12 +102,22 @@ func (s *Scope) CheckResolvedIP(ip net.IP) Decision {
 	}
 	target := ip.String()
 
-	for _, r := range s.excludeCIDRs {
-		if r.ipnet.Contains(ip) {
-			return s.decide(false, fmt.Sprintf("matched exclude %s", r.raw), r.raw, target)
-		}
+	if r, ok := s.matchedExclude(ip); ok {
+		return s.decide(false, fmt.Sprintf("matched exclude %s", r.raw), r.raw, target)
 	}
 	return s.decide(true, "resolved address is not in any excluded range", "", target)
+}
+
+// matchedExclude reports the first exclude CIDR containing ip, if
+// any — the one check Check and CheckResolvedIP both need before
+// diverging on what happens if nothing matches.
+func (s *Scope) matchedExclude(ip net.IP) (cidrRule, bool) {
+	for _, r := range s.excludeCIDRs {
+		if r.ipnet.Contains(ip) {
+			return r, true
+		}
+	}
+	return cidrRule{}, false
 }
 
 func normalizeHost(host string) string {

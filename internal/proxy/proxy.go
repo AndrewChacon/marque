@@ -1,10 +1,10 @@
 // Package proxy is a SOCKS5 + HTTP CONNECT proxy that enforces an
 // engagement scope on every connection it relays. It contains no
 // scope-matching or audit-logging logic of its own — every decision
-// is pkg/scope.Check or CheckHost, every record is pkg/audit.Log. See
-// THREAT_MODEL.md: this is a safety net for traffic routed through
-// it, not a sandbox — a tool that bypasses the proxy entirely is
-// invisible to it.
+// is one of pkg/scope's Check, CheckHost, or CheckResolvedIP methods,
+// every record is pkg/audit.Log. See THREAT_MODEL.md: this is a
+// safety net for traffic routed through it, not a sandbox — a tool
+// that bypasses the proxy entirely is invisible to it.
 package proxy
 
 import (
@@ -132,7 +132,7 @@ func (p *Proxy) resolveTarget(host string) (net.IP, error) {
 // anything is trusted — see that method's doc comment for why this
 // is deliberately an exclude-only recheck, not a second, independent
 // CIDR match.
-func (p *Proxy) decide(host string, resolvedIP net.IP) scope.Decision {
+func (p *Proxy) decide(host string, resolvedIP net.IP, resolveErr error) scope.Decision {
 	if ip := net.ParseIP(host); ip != nil {
 		return p.Scope.Check(ip)
 	}
@@ -142,25 +142,19 @@ func (p *Proxy) decide(host string, resolvedIP net.IP) scope.Decision {
 		return hostDecision
 	}
 	if resolvedIP == nil {
-		return scope.Decision{
-			Allowed: false,
-			Mode:    p.Scope.Mode,
-			Target:  host,
-			Reason:  "hostname matched an include rule but could not be resolved",
+		reason := "hostname matched an include rule but could not be resolved"
+		if resolveErr != nil {
+			reason = fmt.Sprintf("hostname matched an include rule but could not be resolved: %v", resolveErr)
 		}
+		return p.deny(host, "", reason)
 	}
 
 	ipDecision := p.Scope.CheckResolvedIP(resolvedIP)
 	if !ipDecision.Allowed {
-		return scope.Decision{
-			Allowed: false,
-			Mode:    p.Scope.Mode,
-			Target:  host,
-			Reason: fmt.Sprintf(
-				"%q matched an include rule, but it resolves to %s, which is explicitly excluded (possible DNS rebinding): %s",
-				host, resolvedIP, ipDecision.Reason,
-			),
-		}
+		return p.deny(host, ipDecision.MatchedRule, fmt.Sprintf(
+			"%q matched an include rule, but it resolves to %s, which is explicitly excluded (possible DNS rebinding): %s",
+			host, resolvedIP, ipDecision.Reason,
+		))
 	}
 	return scope.Decision{
 		Allowed:     true,
@@ -169,6 +163,13 @@ func (p *Proxy) decide(host string, resolvedIP net.IP) scope.Decision {
 		MatchedRule: hostDecision.MatchedRule,
 		Reason:      fmt.Sprintf("%s (resolved to %s)", hostDecision.Reason, resolvedIP),
 	}
+}
+
+// deny builds a denial Decision for host with the Scope's Mode
+// carried through — the fields decide()'s two deny cases would
+// otherwise repeat.
+func (p *Proxy) deny(host, rule, reason string) scope.Decision {
+	return scope.Decision{Allowed: false, Mode: p.Scope.Mode, Target: host, MatchedRule: rule, Reason: reason}
 }
 
 func (p *Proxy) notify(d scope.Decision) {
@@ -187,8 +188,8 @@ func (p *Proxy) notify(d scope.Decision) {
 // THREAT_MODEL.md, an unaudited allow is indistinguishable from no
 // safety net at all.
 func (p *Proxy) connect(host, port string) (net.Conn, scope.Decision) {
-	resolvedIP, _ := p.resolveTarget(host)
-	decision := p.decide(host, resolvedIP)
+	resolvedIP, resolveErr := p.resolveTarget(host)
+	decision := p.decide(host, resolvedIP, resolveErr)
 
 	if err := p.Audit.Log(decision); err != nil {
 		decision.Allowed = false
@@ -229,7 +230,7 @@ func (p *Proxy) dial(ip net.IP, port string, decision scope.Decision) (net.Conn,
 // itself — a client that pipelines its first request right after the
 // handshake would otherwise have those already-buffered bytes
 // silently dropped.
-func relay(client net.Conn, clientReader io.Reader, target net.Conn) {
+func relay(client net.Conn, clientReader *bufio.Reader, target net.Conn) {
 	done := make(chan struct{}, 1)
 	go func() {
 		io.Copy(target, clientReader)

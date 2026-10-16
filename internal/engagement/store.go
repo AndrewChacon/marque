@@ -125,7 +125,7 @@ func (s *Store) List() ([]string, error) {
 
 	var names []string
 	for _, e := range entries {
-		if e.IsDir() {
+		if e.IsDir() && s.Exists(e.Name()) {
 			names = append(names, e.Name())
 		}
 	}

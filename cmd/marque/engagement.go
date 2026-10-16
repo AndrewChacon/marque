@@ -10,6 +10,13 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// noActiveEngagementRemedy is the common "what to do" suggestion for
+// any command that needs an active engagement and finds none —
+// shared so the wording can't drift between call sites the way it
+// already had (resolvePaths and doctor only mentioned `engagement
+// use`, a no-op for a user who hasn't run `engagement add` yet).
+const noActiveEngagementRemedy = "run `marque engagement use <name>` or `marque engagement add <name>` to set one"
+
 // resolvedPaths is which scope file and audit log a command should
 // use, and — if resolved via the active engagement rather than an
 // explicit --scope — that engagement's name.
@@ -41,7 +48,7 @@ func resolvePaths(scopeFlag, auditFlag string, store *engagement.Store) (resolve
 		return resolvedPaths{}, err
 	}
 	if active == "" {
-		return resolvedPaths{}, fmt.Errorf("no --scope given and no active engagement — run `marque engagement use <name>` first, or pass --scope")
+		return resolvedPaths{}, fmt.Errorf("no --scope given and no active engagement — %s, or pass --scope", noActiveEngagementRemedy)
 	}
 
 	auditPath := auditFlag

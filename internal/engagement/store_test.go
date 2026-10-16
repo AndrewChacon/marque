@@ -88,6 +88,21 @@ func TestStore_ListIsEmptyThenSorted(t *testing.T) {
 	assert.Equal(t, []string{"acme", "midco", "zebra"}, names)
 }
 
+// TestStore_List_ExcludesDirectoriesWithoutAScopeFile covers the gap
+// between List (originally just "is a directory under engagements/")
+// and Exists (always "has a scope.yaml") — reachable if Add's
+// MkdirAll-then-WriteFile is ever interrupted between the two steps,
+// leaving a stray directory with no scope file inside.
+func TestStore_List_ExcludesDirectoriesWithoutAScopeFile(t *testing.T) {
+	s := &Store{Root: t.TempDir()}
+	require.NoError(t, s.Add("real", []byte("doc")))
+	require.NoError(t, os.MkdirAll(filepath.Join(s.Root, "engagements", "half-created"), 0o700))
+
+	names, err := s.List()
+	require.NoError(t, err)
+	assert.Equal(t, []string{"real"}, names)
+}
+
 func TestNewStore_ErrorsWithNoHome(t *testing.T) {
 	t.Setenv("HOME", "")
 	_, err := NewStore()

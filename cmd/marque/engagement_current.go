@@ -79,7 +79,7 @@ func printNoActiveEngagement(w io.Writer, jsonOut, short bool) error {
 		enc.SetIndent("", "  ")
 		return enc.Encode(currentJSON{Active: false})
 	default:
-		fmt.Fprintln(w, "no active engagement — run `marque engagement use <name>` or `marque engagement add <name>` to set one")
+		fmt.Fprintln(w, "no active engagement — "+noActiveEngagementRemedy)
 		return nil
 	}
 }

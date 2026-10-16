@@ -157,7 +157,7 @@ func Parse(data []byte) (*Scope, error) {
 		return nil, fmt.Errorf("engagement.name is required")
 	}
 
-	start, err := time.Parse(time.RFC3339, f.Engagement.Start)
+	start, err := time.Parse(time.RFC3339, strings.TrimSpace(f.Engagement.Start))
 	if err != nil {
 		return nil, fmt.Errorf("engagement.start %q is not valid ISO 8601: %w", f.Engagement.Start, err)
 	}
