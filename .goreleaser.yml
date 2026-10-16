@@ -38,13 +38,20 @@ checksum:
 # private key to generate, store as a secret, or rotate. Signs the
 # checksums file; verifying its signature plus each archive's hash
 # against that file transitively authenticates every archive.
+#
+# --bundle (a single .sigstore.json combining the certificate and
+# signature) rather than the older separate --output-signature/
+# --output-certificate flags: cosign v3 (installed by
+# sigstore/cosign-installer) deprecated those in favor of its new
+# bundle format and silently ignores them, which surfaced as a real
+# release failure ("create bundle file: open : no such file or
+# directory") the first time this pipeline actually ran for real.
 signs:
   - cmd: cosign
-    certificate: "${artifact}.pem"
+    signature: "${artifact}.sigstore.json"
     args:
       - sign-blob
-      - --output-signature=${signature}
-      - --output-certificate=${certificate}
+      - --bundle=${signature}
       - --yes
       - ${artifact}
     artifacts: checksum
@@ -69,8 +76,7 @@ release:
 
     ```
     cosign verify-blob checksums.txt \
-      --signature checksums.txt.sig \
-      --certificate checksums.txt.pem \
+      --bundle checksums.txt.sigstore.json \
       --certificate-identity-regexp 'https://github.com/AndrewChacon/red-marque/.*' \
       --certificate-oidc-issuer https://token.actions.githubusercontent.com
     ```
