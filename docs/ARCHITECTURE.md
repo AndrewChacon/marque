@@ -1,4 +1,4 @@
-# RedMarque — Architecture
+# Marque — Architecture
 
 ## Why a library, not another embedded scanner-side guard
 
@@ -6,7 +6,7 @@ A letter of marque made attacking a specific ship legal. Without one,
 the exact same act was piracy. A signed scope agreement is the pentest
 industry's letter of marque — the only thing separating authorized
 testing from a crime is whether the target falls inside the document
-you were handed. RedMarque enforces that boundary mechanically instead
+you were handed. Marque enforces that boundary mechanically instead
 of leaving it to tester memory and discipline.
 
 ### Prior art
@@ -32,7 +32,7 @@ internal logic, specific to one scanner or one agent framework. None of
 them is a standalone, protocol-level, importable component. Five
 different projects are quietly reimplementing the same guard logic
 because there's no shared dependency they could use instead. That's
-RedMarque's reason to exist: be the boring, well-tested primitive other
+Marque's reason to exist: be the boring, well-tested primitive other
 tools — including future AI pentest-agent frameworks — can depend on,
 instead of rewriting a worse version of it internally.
 
@@ -281,8 +281,8 @@ their own.
 The module path is part of the public import path every third-party
 consumer writes, and is awkward to change later without breaking
 them — confirmed before `go.mod` was created in Stage 1:
-`github.com/AndrewChacon/red-marque` (import as
-`"github.com/AndrewChacon/red-marque/pkg/scope"`).
+`github.com/AndrewChacon/marque` (import as
+`"github.com/AndrewChacon/marque/pkg/scope"`).
 
 ## Versioning
 

@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/AndrewChacon/red-marque/internal/engagement"
+	"github.com/AndrewChacon/marque/internal/engagement"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

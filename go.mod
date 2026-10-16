@@ -1,4 +1,4 @@
-module github.com/AndrewChacon/red-marque
+module github.com/AndrewChacon/marque
 
 go 1.24.4
 

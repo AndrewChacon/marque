@@ -1,8 +1,8 @@
-# RedMarque — User Flow & Intuitiveness Vision
+# Marque — User Flow & Intuitiveness Vision
 
 ## Why this doc exists
 
-RedMarque enforces engagement scope mechanically instead of leaving it to
+Marque enforces engagement scope mechanically instead of leaving it to
 tester memory. That value proposition is worthless if the tool itself is
 hard to use correctly under pressure — a scope-enforcement tool that's
 confusing is just a new way to make the same mistake it's meant to
@@ -32,7 +32,7 @@ which context is active" risk that model trades in for convenience.
 ## Single-engagement flow
 
 **1. Install** — one static binary. Download a release binary, or
-`go install github.com/AndrewChacon/red-marque/cmd/marque@latest`.
+`go install github.com/AndrewChacon/marque/cmd/marque@latest`.
 (Homebrew is a possible future option, not built for v1.) No venv, no
 dependency resolution, nothing to configure first.
 
@@ -88,7 +88,7 @@ get the terminal straight back, keep working in the same window. The
 startup banner prints once, with exactly how to check on it:
 
 ```
-RedMarque — engagement: acme-2026q4 (Acme Corp)
+Marque — engagement: acme-2026q4 (Acme Corp)
 window: 2026-10-14 → 2026-10-28 (14 days remaining)
 mode: enforce · listening on 127.0.0.1:1080
 

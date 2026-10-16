@@ -1,4 +1,4 @@
-# RedMarque — Threat Model
+# Marque — Threat Model
 
 ## Why this document exists
 
@@ -13,10 +13,10 @@ mode instead of vibes.
 
 ## The adversary: a mistake, not an attacker
 
-**RedMarque's threat model is a mistaken keystroke or a misconfigured
+**Marque's threat model is a mistaken keystroke or a misconfigured
 tool, not a hostile actor trying to evade the guard.**
 
-The pentester holding the signed ROE is the trusted operator. RedMarque
+The pentester holding the signed ROE is the trusted operator. Marque
 exists because that operator — under time pressure, running a dozen
 tools against a dozen targets, sometimes mid-engagement at 2am — is a
 human who will eventually:
@@ -33,12 +33,12 @@ None of this requires malice. All of it is routine, and all of it is
 exactly what turns authorized testing into something that looks a lot
 like unauthorized access the moment someone reviews it afterward. That
 gap — authorized intent, unauthorized-looking action — is what
-RedMarque closes.
+Marque closes.
 
 This is a **safety net for the tester**, not a **sandbox against the
 tester**. The distinction drives every scope decision below.
 
-## In scope: what RedMarque is responsible for preventing
+## In scope: what Marque is responsible for preventing
 
 1. **Traffic reaching a host outside the signed scope**, whether that's
    caused by operator error, tool misconfiguration, or a stale target
@@ -67,7 +67,7 @@ tester**. The distinction drives every scope decision below.
    range the scope file explicitly excludes. This is the one place the
    model does consider an adversarial-shaped failure (a target's
    infrastructure answering differently than expected) without
-   requiring the adversary to be *attacking RedMarque* — it's just a
+   requiring the adversary to be *attacking Marque* — it's just a
    mechanical correctness property of checking addresses, not names.
 
 4. **Continuing to operate after the engagement window has closed.** An
@@ -80,7 +80,7 @@ tester**. The distinction drives every scope decision below.
    access, but it can be made so that tampering leaves a detectable
    seam (see "tamper-evident, not tamper-proof" below).
 
-## Explicitly out of scope: what RedMarque cannot and does not protect against
+## Explicitly out of scope: what Marque cannot and does not protect against
 
 Being honest about this list is as important as the in-scope list. A
 safety-net tool that implies a stronger guarantee than it provides is
@@ -89,7 +89,7 @@ worse than one that's upfront about its edges.
 1. **A tool or process that bypasses the configured proxy entirely.**
    If something opens a raw socket, ignores `HTTP_PROXY`/`ALL_PROXY`,
    hardcodes a different egress path, or runs on a machine where the
-   proxy was never wired in, RedMarque never sees that traffic and
+   proxy was never wired in, Marque never sees that traffic and
    cannot block it. `marque run` only catches what it can find via
    regex in argv — a tool that resolves a target at runtime from a
    config file, an API response, or internal logic is invisible to it.
@@ -97,10 +97,10 @@ worse than one that's upfront about its edges.
    and must stay prominent in the README, not buried here.**
 
 2. **A hostile operator trying to defeat their own tooling on purpose.**
-   If the person running RedMarque wants to attack something out of
+   If the person running Marque wants to attack something out of
    scope badly enough to patch the binary, run the target tool
    unproxied, or edit the scope file to include it, nothing in this
-   design stops them. RedMarque assumes an operator who wants to stay
+   design stops them. Marque assumes an operator who wants to stay
    in scope and occasionally fails to, not one who is actively working
    around the guard.
 
@@ -118,27 +118,27 @@ worse than one that's upfront about its edges.
    is in scope for *fuzzing coverage* (the parser must never panic and
    must never fail open), but a scope file is treated as **trusted
    input written by the operator**, not adversarial input from a third
-   party. RedMarque does not defend against a supply-chain-compromised
+   party. Marque does not defend against a supply-chain-compromised
    scope file planted by someone other than the operator.
 
 5. **Confidentiality of engagement data at rest.** `scope.yaml` and the
    audit log contain live client infrastructure details and are
-   sensitive, but RedMarque does not encrypt them on disk. It's the
+   sensitive, but Marque does not encrypt them on disk. It's the
    operator's responsibility to protect `~/.marque/` the way they'd
    protect any other client-confidential working file (restrictive
    permissions, disk encryption, etc.) — this may get light tooling
    help later (e.g. `doctor` warning on loose permissions) but is not a
    cryptographic guarantee this tool makes.
 
-6. **Vulnerabilities in the tools being run through the proxy.** RedMarque
+6. **Vulnerabilities in the tools being run through the proxy.** Marque
    mediates *where* traffic is allowed to go, not whether the traffic
    itself is safe, well-formed, or exploit-free. A tool that's itself
-   compromised is a problem RedMarque doesn't attempt to solve.
+   compromised is a problem Marque doesn't attempt to solve.
 
 7. **Network-layer enforcement.** There is no firewall rule, network
    namespace, or mandatory routing underneath this — it's a userspace
    proxy and an argv-scanning exec wrapper. Anything that operates below
-   that layer is outside what RedMarque can see or control.
+   that layer is outside what Marque can see or control.
 
 ## Reviewed pre-v1.0 (2026-10-16)
 
@@ -173,7 +173,7 @@ v1.0 — none are being engineered around:
 
 ## Fail-closed, stated precisely
 
-"Fail closed" means: whenever RedMarque cannot positively confirm a
+"Fail closed" means: whenever Marque cannot positively confirm a
 destination is in scope and within the engagement window, it treats
 that destination as out of scope. Concretely:
 

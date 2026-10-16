@@ -77,6 +77,6 @@ release:
     ```
     cosign verify-blob checksums.txt \
       --bundle checksums.txt.sigstore.json \
-      --certificate-identity-regexp 'https://github.com/AndrewChacon/red-marque/.*' \
+      --certificate-identity-regexp 'https://github.com/AndrewChacon/marque/.*' \
       --certificate-oidc-issuer https://token.actions.githubusercontent.com
     ```

@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/AndrewChacon/red-marque/internal/engagement"
-	"github.com/AndrewChacon/red-marque/pkg/scope"
+	"github.com/AndrewChacon/marque/internal/engagement"
+	"github.com/AndrewChacon/marque/pkg/scope"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -166,7 +166,7 @@ func TestRunCmd_PrintsEngagementHeader(t *testing.T) {
 
 	err := cmd.Execute()
 	require.Error(t, err)
-	assert.Contains(t, out.String(), "RedMarque — engagement: acme")
+	assert.Contains(t, out.String(), "Marque — engagement: acme")
 }
 
 func TestRunCmd_RefusesOutOfScopeBeforeExec(t *testing.T) {

@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/AndrewChacon/red-marque/internal/engagement"
-	"github.com/AndrewChacon/red-marque/pkg/audit"
-	"github.com/AndrewChacon/red-marque/pkg/scope"
+	"github.com/AndrewChacon/marque/internal/engagement"
+	"github.com/AndrewChacon/marque/pkg/audit"
+	"github.com/AndrewChacon/marque/pkg/scope"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -131,7 +131,7 @@ func TestAuditCmd_Tail_MissingLogIsActionable(t *testing.T) {
 	err := cmd.Execute()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "marque proxy")
-	assert.Contains(t, out.String(), "RedMarque — engagement: acme", "the header must print even though tailing itself never starts")
+	assert.Contains(t, out.String(), "Marque — engagement: acme", "the header must print even though tailing itself never starts")
 }
 
 func mustMarshalEntry(t *testing.T, d scope.Decision) []byte {

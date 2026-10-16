@@ -1,4 +1,4 @@
-# Contributing to RedMarque
+# Contributing to Marque
 
 ## Before you start
 
@@ -89,7 +89,7 @@ check list above before every commit, not just before opening the PR.
 
 ## Reporting a security issue
 
-RedMarque is a security tool whose core promise is fail-closed
+Marque is a security tool whose core promise is fail-closed
 enforcement — if you find a case where it fails open (allows
 something `scope.yaml` says should be denied), please open an issue
 describing the scope file and the target that got through rather than

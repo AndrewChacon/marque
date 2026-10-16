@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/AndrewChacon/red-marque/internal/engagement"
-	"github.com/AndrewChacon/red-marque/pkg/audit"
+	"github.com/AndrewChacon/marque/internal/engagement"
+	"github.com/AndrewChacon/marque/pkg/audit"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -240,7 +240,7 @@ func TestDaemonizeProxy_SuccessPrintsBannerAndHints(t *testing.T) {
 			OK:         true,
 			PID:        54321,
 			ListenAddr: "127.0.0.1:1080",
-			Banner:     "RedMarque — engagement: acme (Acme Corp)\nmode: enforce · listening on 127.0.0.1:1080\n\n",
+			Banner:     "Marque — engagement: acme (Acme Corp)\nmode: enforce · listening on 127.0.0.1:1080\n\n",
 		}, nil
 	})
 
@@ -255,7 +255,7 @@ func TestDaemonizeProxy_SuccessPrintsBannerAndHints(t *testing.T) {
 
 	require.NoError(t, cmd.Execute())
 	output := out.String()
-	assert.Contains(t, output, "RedMarque — engagement: acme")
+	assert.Contains(t, output, "Marque — engagement: acme")
 	assert.Contains(t, output, "backgrounded — pid 54321")
 	assert.Contains(t, output, "marque proxy status")
 	assert.Contains(t, output, "marque audit --tail")

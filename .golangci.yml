@@ -18,7 +18,7 @@ linters:
         - (net.Conn).Close
         - (net.Listener).Close
         - (*os.File).Close
-        - (*github.com/AndrewChacon/red-marque/pkg/audit.Log).Close
+        - (*github.com/AndrewChacon/marque/pkg/audit.Log).Close
         - fmt.Fprint
         - fmt.Fprintf
         - fmt.Fprintln
@@ -27,7 +27,7 @@ linters:
         - (net.Conn).SetReadDeadline
         - io.Copy
         - (*encoding/json.Encoder).Encode
-        - (*github.com/AndrewChacon/red-marque/internal/proxy.Proxy).Serve
+        - (*github.com/AndrewChacon/marque/internal/proxy.Proxy).Serve
     gosec:
       # G104 duplicates errcheck's job with a cruder, non-per-function
       # configurable ruleset — errcheck (with the excludes above) is

@@ -1,10 +1,10 @@
-# RedMarque
+# Marque
 
-[![CI](https://github.com/AndrewChacon/red-marque/actions/workflows/ci.yml/badge.svg)](https://github.com/AndrewChacon/red-marque/actions/workflows/ci.yml)
-[![Go Reference](https://pkg.go.dev/badge/github.com/AndrewChacon/red-marque.svg)](https://pkg.go.dev/github.com/AndrewChacon/red-marque)
+[![CI](https://github.com/AndrewChacon/marque/actions/workflows/ci.yml/badge.svg)](https://github.com/AndrewChacon/marque/actions/workflows/ci.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/AndrewChacon/marque.svg)](https://pkg.go.dev/github.com/AndrewChacon/marque)
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
-**Mechanical scope enforcement for pentest engagements.** RedMarque
+**Mechanical scope enforcement for pentest engagements.** Marque
 checks every target against a signed-off `scope.yaml` before traffic
 reaches it — as a SOCKS5/HTTP CONNECT proxy, a one-off exec wrapper,
 or a Go library you import directly — instead of leaving "is this
@@ -14,13 +14,13 @@ A letter of marque made attacking a specific ship legal; without one,
 the exact same act was piracy. A signed scope agreement is the pentest
 industry's letter of marque — the only thing separating authorized
 testing from a crime is whether the target falls inside the document
-you were handed. RedMarque enforces that boundary mechanically instead
+you were handed. Marque enforces that boundary mechanically instead
 of trusting memory and discipline to hold under pressure at 2am on day
 four of an engagement.
 
 ## What this is (and isn't)
 
-RedMarque's threat model is **a mistaken keystroke, not a hostile
+Marque's threat model is **a mistaken keystroke, not a hostile
 attacker** — it exists to catch a fat-fingered IP, a target list
 copied from the wrong client's folder, a scan that kept running a few
 hours after the window closed. It is a safety net for the tester, not
@@ -49,19 +49,19 @@ list: [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md).
 ## Install
 
 ```bash
-go install github.com/AndrewChacon/red-marque/cmd/marque@latest
+go install github.com/AndrewChacon/marque/cmd/marque@latest
 ```
 
 Or download a prebuilt binary for your OS/arch from the
-[Releases page](https://github.com/AndrewChacon/red-marque/releases) —
+[Releases page](https://github.com/AndrewChacon/marque/releases) —
 checksummed and signed (cosign, keyless) static binaries, no runtime
 dependencies.
 
 Or build from source (Go 1.24+):
 
 ```bash
-git clone https://github.com/AndrewChacon/red-marque
-cd red-marque
+git clone https://github.com/AndrewChacon/marque
+cd marque
 go build -o marque ./cmd/marque
 ```
 
@@ -82,7 +82,7 @@ marque proxy
 ```
 
 ```
-RedMarque — engagement: acme-2026q4 (Acme Corp)
+Marque — engagement: acme-2026q4 (Acme Corp)
 window: 2026-10-14 → 2026-10-28 (14 days remaining)
 mode: enforce · listening on 127.0.0.1:1080
 
@@ -194,7 +194,7 @@ each bake their own internal scope-guard into one scanner or one agent
 framework. None of them is a standalone, protocol-level, importable
 component — five different projects quietly reimplementing the same
 guard logic because there's no shared dependency they could use
-instead. That's RedMarque's reason to exist: the boring, well-tested
+instead. That's Marque's reason to exist: the boring, well-tested
 primitive other tools can depend on, instead of rewriting a worse
 version of it internally.
 
@@ -209,7 +209,7 @@ version of it internally.
 
 ## Lawful use
 
-RedMarque is a defensive aid for engagements you are already
+Marque is a defensive aid for engagements you are already
 authorized to perform — it reduces the odds of an in-scope tester
 accidentally touching something out of scope. It is not authorization
 itself. Only use it against systems you hold a signed, written

@@ -9,7 +9,7 @@ func newRootCmd() *cobra.Command {
 	root := &cobra.Command{
 		Use:   "marque",
 		Short: "Mechanical scope enforcement for pentest engagements",
-		Long: `RedMarque enforces engagement scope mechanically instead of leaving it
+		Long: `Marque enforces engagement scope mechanically instead of leaving it
 to tester memory. Point it at a signed-off scope.yaml and it tells you,
 precisely, whether a target is authorized right now.`,
 		SilenceUsage:  true,

@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/AndrewChacon/red-marque/internal/engagement"
-	"github.com/AndrewChacon/red-marque/pkg/audit"
+	"github.com/AndrewChacon/marque/internal/engagement"
+	"github.com/AndrewChacon/marque/pkg/audit"
 	"github.com/spf13/cobra"
 )
 

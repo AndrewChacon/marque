@@ -23,7 +23,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/AndrewChacon/red-marque/pkg/scope"
+	"github.com/AndrewChacon/marque/pkg/scope"
 )
 
 // entryBody is the portion of an Entry that gets hashed. Keeping it as

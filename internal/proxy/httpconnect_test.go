@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/AndrewChacon/red-marque/pkg/audit"
+	"github.com/AndrewChacon/marque/pkg/audit"
 	"github.com/stretchr/testify/require"
 )
 

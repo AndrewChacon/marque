@@ -1,7 +1,7 @@
 // Package scope answers one question: is this IP or hostname, right now,
 // inside the authorized engagement scope? It has no knowledge of
 // networking, proxies, or CLI concerns — it is meant to be imported
-// directly by third-party tools, not just consumed through RedMarque's
+// directly by third-party tools, not just consumed through Marque's
 // own CLI.
 package scope
 

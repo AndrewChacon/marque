@@ -1,4 +1,4 @@
-// Command marque is RedMarque's CLI: a thin wrapper over pkg/scope and
+// Command marque is Marque's CLI: a thin wrapper over pkg/scope and
 // pkg/audit. It contains no scope-matching or logging logic of its own —
 // that all lives in the packages it imports.
 package main

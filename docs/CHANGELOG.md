@@ -42,5 +42,5 @@ ARCHITECTURE.md's Versioning section).
 
 See [THREAT_MODEL.md](THREAT_MODEL.md)'s "Explicitly out of scope"
 section — most importantly, a tool or process that bypasses the
-configured proxy entirely is invisible to RedMarque and cannot be
+configured proxy entirely is invisible to Marque and cannot be
 blocked by it.

@@ -15,7 +15,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/AndrewChacon/red-marque/pkg/scope"
+	"github.com/AndrewChacon/marque/pkg/scope"
 )
 
 // defaultNetworkTimeout is used when Proxy.NetworkTimeout is zero.

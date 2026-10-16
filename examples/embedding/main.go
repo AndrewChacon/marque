@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"runtime"
 
-	"github.com/AndrewChacon/red-marque/pkg/scope"
+	"github.com/AndrewChacon/marque/pkg/scope"
 )
 
 // targets stands in for whatever an agent loop would actually be

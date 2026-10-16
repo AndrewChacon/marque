@@ -6,8 +6,8 @@ import (
 	"io"
 	"time"
 
-	"github.com/AndrewChacon/red-marque/internal/engagement"
-	"github.com/AndrewChacon/red-marque/pkg/scope"
+	"github.com/AndrewChacon/marque/internal/engagement"
+	"github.com/AndrewChacon/marque/pkg/scope"
 	"github.com/spf13/cobra"
 )
 
@@ -179,14 +179,14 @@ func windowDateRange(s *scope.Scope) string {
 	return fmt.Sprintf("%s → %s", s.Start.Format("2006-01-02"), end)
 }
 
-// printEngagementHeader renders the "RedMarque — engagement: ..." /
+// printEngagementHeader renders the "Marque — engagement: ..." /
 // "window: ..." pair every scope-aware command's output leads with,
 // per docs/UX_FLOW.md's requirement that the active engagement is
 // visible in every command's header, not just use/proxy. Anything
 // after the window line (mode, listen address, etc.) is each caller's
 // own business, since that varies by command.
 func printEngagementHeader(w io.Writer, s *scope.Scope, now time.Time) {
-	fmt.Fprintf(w, "RedMarque — engagement: %s\n", engagementLabel(s))
+	fmt.Fprintf(w, "Marque — engagement: %s\n", engagementLabel(s))
 	fmt.Fprintf(w, "window: %s (%s)\n", windowDateRange(s), windowSummary(s, now))
 }
 

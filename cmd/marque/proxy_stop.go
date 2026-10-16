@@ -7,7 +7,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/AndrewChacon/red-marque/internal/engagement"
+	"github.com/AndrewChacon/marque/internal/engagement"
 	"github.com/spf13/cobra"
 )
 

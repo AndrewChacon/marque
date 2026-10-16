@@ -12,9 +12,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/AndrewChacon/red-marque/internal/engagement"
-	"github.com/AndrewChacon/red-marque/internal/proxy"
-	"github.com/AndrewChacon/red-marque/pkg/scope"
+	"github.com/AndrewChacon/marque/internal/engagement"
+	"github.com/AndrewChacon/marque/internal/proxy"
+	"github.com/AndrewChacon/marque/pkg/scope"
 	"github.com/spf13/cobra"
 )
 
