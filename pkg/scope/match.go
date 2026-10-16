@@ -56,6 +56,14 @@ func (s *Scope) Check(ip net.IP) Decision {
 // (including wildcard subdomains) are matched here; a literal IP
 // string is delegated to Check so both entry points share one
 // matching outcome for the same address.
+//
+// CheckHost alone is not sufficient before connecting to host: an
+// Allowed result here means the hostname matched a domain rule, not
+// that the address it eventually resolves to is safe to connect to.
+// Any consumer about to open a real connection — not just display or
+// log the decision — must resolve host and pass the result to
+// CheckResolvedIP before connecting. See CheckResolvedIP for why this
+// second step exists.
 func (s *Scope) CheckHost(host string) Decision {
 	h := normalizeHost(host)
 	if h == "" {
@@ -81,7 +89,9 @@ func (s *Scope) CheckHost(host string) Decision {
 
 // CheckResolvedIP re-validates ip — the address a hostname that
 // already passed CheckHost resolved to — against only the exclude
-// rules. This is the DNS-rebinding close described in
+// rules. Calling this is required, not optional, for any consumer
+// about to connect to that address; see CheckHost's doc for the full
+// contract. This is the DNS-rebinding close described in
 // THREAT_MODEL.md: a hostname check and the IP it eventually resolves
 // to are not guaranteed to agree, so the resolved address gets a
 // second look before anything connects to it.

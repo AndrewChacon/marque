@@ -102,12 +102,13 @@ type Scope struct {
 	// Mode is the scope file's declared mode, carried through to every
 	// Decision unchanged — see Mode's doc comment for what it means.
 	Mode Mode
-	// IncludeRules and ExcludeRules are the include/exclude entries
-	// exactly as declared in the scope file, in declaration order.
-	// Check/CheckHost don't use these directly (they match against the
-	// parsed CIDR/domain rules below) — these are for a consumer that
-	// wants to display what's in scope, like `marque validate`.
+	// IncludeRules holds the include entries exactly as declared in
+	// the scope file, in declaration order. Check/CheckHost don't use
+	// these directly (they match against the parsed CIDR/domain rules
+	// below) — these are for a consumer that wants to display what's
+	// in scope, like `marque validate`.
 	IncludeRules []string
+	// ExcludeRules is the same, for the scope file's exclude entries.
 	ExcludeRules []string
 
 	includeCIDRs   []cidrRule

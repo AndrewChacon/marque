@@ -140,6 +140,25 @@ worse than one that's upfront about its edges.
    proxy and an argv-scanning exec wrapper. Anything that operates below
    that layer is outside what RedMarque can see or control.
 
+## Reviewed pre-v1.0 (2026-10-16)
+
+Every limitation above, plus two that previously existed only as code
+comments, were explicitly walked through before freezing `pkg/scope`
+and `pkg/audit`'s public API at v1.0.0. All stand as accepted for
+v1.0 — none are being engineered around:
+
+- The seven items above (proxy bypass, hostile operator, tamper-
+  evident not tamper-proof, trusted-not-adversarial scope files, no
+  at-rest encryption, no downstream-tool vetting, no network-layer
+  enforcement).
+- `pkg/audit.Log`'s `Sync`-only-failure rollback path can't be
+  independently unit-tested without either OS-level fault injection or
+  an interface seam added purely for testability — this project
+  avoids the latter on principle. See the comment on
+  `TestLog_RollsBackOnWriteFailure` in `pkg/audit/audit_test.go`.
+- No Windows support: `marque run` replaces the current process via
+  `syscall.Exec`, which is Unix-only. See `docs/stages/STAGE_4.md`.
+
 ## Trust boundaries
 
 | Input                          | Trust level                              | Handling                                                        |
@@ -157,7 +176,10 @@ that destination as out of scope. Concretely:
 
 - Missing or unparsable scope file → refuse to start, not "allow
   everything until fixed."
-- Expired engagement window → refuse to start without `--force`.
+- Expired engagement window → `marque run` refuses unconditionally;
+  `marque proxy` refuses unless started with `--force` (for running a
+  second instance against a *different* engagement — see
+  `cmd/marque/proxy.go`).
 - A destination matched by neither an include nor an exclude rule →
   denied (there is no implicit allow).
 - A decision that can't be logged (audit write failure) is treated as a
