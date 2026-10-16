@@ -70,6 +70,17 @@ func TestRunDoctorChecks_UpcomingWindowWarns(t *testing.T) {
 	assert.Equal(t, "WARN", checksByName(checks)["engagement window"].status)
 }
 
+func TestRunDoctorChecks_OpenEndedWindowPasses(t *testing.T) {
+	store := &engagement.Store{Root: t.TempDir()}
+	addTestEngagementOpenEnded(t, store, "acme", time.Now().Add(-time.Hour))
+	require.NoError(t, store.SetActive("acme"))
+
+	checks := runDoctorChecks(store)
+	byName := checksByName(checks)
+	assert.Equal(t, "PASS", byName["engagement window"].status)
+	assert.Contains(t, byName["engagement window"].detail, "ongoing")
+}
+
 func TestPortFreeCheck_FreePasses(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)

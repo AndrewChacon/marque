@@ -123,12 +123,15 @@ func TestAuditCmd_Tail_MissingLogIsActionable(t *testing.T) {
 	require.NoError(t, store.SetActive("acme"))
 
 	cmd := newAuditCmdWithStore(store)
+	var out bytes.Buffer
+	cmd.SetOut(&out)
 	cmd.SetArgs([]string{"--tail"})
 	cmd.SilenceErrors = true
 
 	err := cmd.Execute()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "marque proxy")
+	assert.Contains(t, out.String(), "RedMarque — engagement: acme", "the header must print even though tailing itself never starts")
 }
 
 func mustMarshalEntry(t *testing.T, d scope.Decision) []byte {

@@ -83,6 +83,7 @@ func TestOpenAuditLogWithHint_AddsHintOnlyForLockContention(t *testing.T) {
 	_, err = openAuditLogWithHint(path)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "marque proxy")
+	assert.Contains(t, err.Error(), "marque run")
 }
 
 func TestOpenAuditLogWithHint_PassesThroughOtherErrorsUnchanged(t *testing.T) {

@@ -94,8 +94,11 @@ type Scope struct {
 	Client string
 	// Start is the beginning of the authorized engagement window.
 	Start time.Time
-	// End is the end of the authorized engagement window.
-	End time.Time
+	// End is the end of the authorized engagement window, or nil for
+	// an open-ended engagement (e.g. a bug bounty program with no
+	// fixed end date) — see Parse for how an omitted engagement.end
+	// in the scope file maps to this.
+	End *time.Time
 	// Mode is the scope file's declared mode, carried through to every
 	// Decision unchanged — see Mode's doc comment for what it means.
 	Mode Mode
@@ -158,12 +161,21 @@ func Parse(data []byte) (*Scope, error) {
 	if err != nil {
 		return nil, fmt.Errorf("engagement.start %q is not valid ISO 8601: %w", f.Engagement.Start, err)
 	}
-	end, err := time.Parse(time.RFC3339, f.Engagement.End)
-	if err != nil {
-		return nil, fmt.Errorf("engagement.end %q is not valid ISO 8601: %w", f.Engagement.End, err)
-	}
-	if !end.After(start) {
-		return nil, fmt.Errorf("engagement.end (%s) must be after engagement.start (%s)", f.Engagement.End, f.Engagement.Start)
+
+	// engagement.end is optional: an absent/empty key means an
+	// open-ended engagement (no hard end date), e.g. a bug bounty
+	// program with no fixed close. A present-but-malformed value is
+	// still a hard parse error, same as always.
+	var end *time.Time
+	if trimmedEnd := strings.TrimSpace(f.Engagement.End); trimmedEnd != "" {
+		parsedEnd, err := time.Parse(time.RFC3339, trimmedEnd)
+		if err != nil {
+			return nil, fmt.Errorf("engagement.end %q is not valid ISO 8601: %w", f.Engagement.End, err)
+		}
+		if !parsedEnd.After(start) {
+			return nil, fmt.Errorf("engagement.end (%s) must be after engagement.start (%s)", f.Engagement.End, f.Engagement.Start)
+		}
+		end = &parsedEnd
 	}
 
 	mode, err := parseMode(f.Mode)

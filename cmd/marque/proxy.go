@@ -175,5 +175,5 @@ func printDecision(w io.Writer, d scope.Decision, jsonOut bool) {
 	if !d.Allowed {
 		label = colorize(colorRed, "BLOCK")
 	}
-	fmt.Fprintf(w, "%s  %-21s  %s\n", label, d.Target, d.Reason)
+	fmt.Fprintf(w, "%s  %-21s  %s\n", label, sanitizeForSingleLineDisplay(d.Target), sanitizeForSingleLineDisplay(d.Reason))
 }

@@ -60,7 +60,7 @@ func openAuditLogWithHint(path string) (*audit.Log, error) {
 	log, err := audit.Open(path)
 	if err != nil {
 		if errors.Is(err, audit.ErrLocked) {
-			return nil, fmt.Errorf("%w — if `marque proxy` is already running against this engagement, route traffic through it instead of running concurrently, or `marque proxy stop` first", err)
+			return nil, fmt.Errorf("%w — if `marque proxy` or another `marque run` is already running against this engagement, route traffic through the proxy, wait for the other run to finish, or `marque proxy stop` first", err)
 		}
 		return nil, err
 	}
@@ -98,6 +98,7 @@ func newEngagementCmd() *cobra.Command {
 	cmd.AddCommand(newEngagementAddCmd())
 	cmd.AddCommand(newEngagementUseCmd())
 	cmd.AddCommand(newEngagementListCmd())
+	cmd.AddCommand(newEngagementCurrentCmd())
 	return cmd
 }
 

@@ -51,6 +51,19 @@ func TestProxyPID_WriteReadRoundTrip(t *testing.T) {
 	assert.True(t, want.StartedAt.Equal(got.StartedAt))
 }
 
+func TestWriteProxyPID_RefusesSecondClaimWhileFirstExists(t *testing.T) {
+	store := &engagement.Store{Root: t.TempDir()}
+	require.NoError(t, writeProxyPID(store, proxyDaemonInfo{PID: 111, ListenAddr: "127.0.0.1:1080"}))
+
+	err := writeProxyPID(store, proxyDaemonInfo{PID: 222, ListenAddr: "127.0.0.1:1081"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "claimed the pid file first")
+
+	info, _, err := readProxyPID(store)
+	require.NoError(t, err)
+	assert.Equal(t, 111, info.PID, "the first writer's claim must survive a second writer's failed attempt")
+}
+
 func TestProxyPID_RemoveThenReadIsNotRunning(t *testing.T) {
 	store := &engagement.Store{Root: t.TempDir()}
 	require.NoError(t, writeProxyPID(store, proxyDaemonInfo{PID: os.Getpid()}))

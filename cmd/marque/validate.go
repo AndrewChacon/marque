@@ -68,9 +68,25 @@ func printValidationTable(w io.Writer, s *scope.Scope) {
 		}
 	}
 
-	if windowStatus(s, now) == "expired" {
+	if msg := windowWarningText(s, now); msg != "" {
 		fmt.Fprintln(w)
-		fmt.Fprintln(w, colorize(colorRed, "⚠ engagement window has ended — scope checks will deny everything until this file is updated"))
+		fmt.Fprintln(w, colorize(colorRed, "⚠ "+msg))
+	}
+}
+
+// windowWarningText is the loud-warning line's body for a window that
+// currently denies everything — "" when the window is active and
+// nothing needs shouting about. Expired and upcoming windows deny
+// identically right now (pkg/scope's decide() doesn't distinguish
+// them), so both get equally loud treatment here.
+func windowWarningText(s *scope.Scope, now time.Time) string {
+	switch windowStatus(s, now) {
+	case "expired":
+		return "engagement window has ended — scope checks will deny everything until this file is updated"
+	case "upcoming":
+		return "engagement window has not started yet — scope checks will deny everything until it begins"
+	default:
+		return ""
 	}
 }
 
@@ -83,11 +99,35 @@ func engagementLabel(s *scope.Scope) string {
 	return fmt.Sprintf("%s (%s)", s.Name, s.Client)
 }
 
+// resolvedEngagementName prefers key (the storage key — what
+// `marque engagement use <name>` expects back) over s.Name (the scope
+// file's own self-reported engagement.name) whenever a key is known.
+// key is "" when there isn't one (an explicit --scope file with no
+// active engagement), in which case the file's self-reported name is
+// genuinely the only name there is.
+func resolvedEngagementName(key string, s *scope.Scope) string {
+	if key != "" {
+		return key
+	}
+	return s.Name
+}
+
+// keyedLabel is engagementLabel, preferring the storage key the same
+// way resolvedEngagementName does — for display surfaces where a user
+// might copy the printed name straight into `engagement use`.
+func keyedLabel(key string, s *scope.Scope) string {
+	name := resolvedEngagementName(key, s)
+	if s.Client == "" {
+		return name
+	}
+	return fmt.Sprintf("%s (%s)", name, s.Client)
+}
+
 type validationJSON struct {
 	Name    string     `json:"name"`
 	Client  string     `json:"client,omitempty"`
 	Start   time.Time  `json:"start"`
-	End     time.Time  `json:"end"`
+	End     *time.Time `json:"end,omitempty"`
 	Mode    scope.Mode `json:"mode"`
 	Include []string   `json:"include"`
 	Exclude []string   `json:"exclude"`
@@ -117,7 +157,7 @@ func printValidationJSON(w io.Writer, s *scope.Scope) error {
 // (or one JSON encode) is judged against a single consistent instant.
 func windowStatus(s *scope.Scope, now time.Time) string {
 	switch {
-	case now.After(s.End):
+	case s.End != nil && now.After(*s.End):
 		return "expired"
 	case now.Before(s.Start):
 		return "upcoming"
@@ -127,10 +167,16 @@ func windowStatus(s *scope.Scope, now time.Time) string {
 }
 
 // windowDateRange renders a scope's window as "YYYY-MM-DD →
-// YYYY-MM-DD" — the one place that date pair gets formatted, shared
-// by every command's header and the audit export's own window line.
+// YYYY-MM-DD", or "YYYY-MM-DD → ongoing" for an open-ended engagement
+// with no end date — the one place that date pair gets formatted,
+// shared by every command's header and the audit export's own window
+// line.
 func windowDateRange(s *scope.Scope) string {
-	return fmt.Sprintf("%s → %s", s.Start.Format("2006-01-02"), s.End.Format("2006-01-02"))
+	end := "ongoing"
+	if s.End != nil {
+		end = s.End.Format("2006-01-02")
+	}
+	return fmt.Sprintf("%s → %s", s.Start.Format("2006-01-02"), end)
 }
 
 // printEngagementHeader renders the "RedMarque — engagement: ..." /
@@ -147,10 +193,13 @@ func printEngagementHeader(w io.Writer, s *scope.Scope, now time.Time) {
 func windowSummary(s *scope.Scope, now time.Time) string {
 	switch windowStatus(s, now) {
 	case "expired":
-		return fmt.Sprintf("expired %s ago", pluralDays(max(1, int(now.Sub(s.End).Hours()/24))))
+		return fmt.Sprintf("expired %s ago", pluralDays(max(1, int(now.Sub(*s.End).Hours()/24))))
 	case "upcoming":
 		return fmt.Sprintf("starts in %s", pluralDays(max(1, int(s.Start.Sub(now).Hours()/24))))
 	default:
+		if s.End == nil {
+			return "ongoing — no end date"
+		}
 		return fmt.Sprintf("%s remaining", pluralDays(int(s.End.Sub(now).Hours()/24)))
 	}
 }

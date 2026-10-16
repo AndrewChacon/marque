@@ -190,11 +190,14 @@ unconditionally.
 
 ### Engagement window
 
-`engagement.start`/`engagement.end` are ISO 8601. `Check`/`CheckHost`
-return `Allowed: false` for any check performed outside that window,
-independent of CIDR/domain matching — an in-scope IP checked after the
-window closes is still a denial, with `Reason` saying so explicitly
-rather than looking like an ordinary scope miss.
+`engagement.start` is mandatory, ISO 8601. `engagement.end` is
+optional — omitting it means an open-ended engagement (e.g. a bug
+bounty program with no fixed close date), represented as a `nil`
+`Scope.End` rather than a sentinel date. `Check`/`CheckHost` return
+`Allowed: false` for any check performed before `start`, and, when
+`end` is set, after it too — independent of CIDR/domain matching, with
+`Reason` saying so explicitly rather than looking like an ordinary
+scope miss. An open-ended engagement never hits that second check.
 
 ### `engagement.client` (optional)
 

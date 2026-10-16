@@ -36,6 +36,23 @@ mode: %s
 	return s
 }
 
+// mustScopeOpenEnded is mustScopeMode's open-ended sibling: same
+// fixed, safely-active start, but no engagement.end line at all, so
+// Parse's "omitted end" path is exercised rather than a real date.
+func mustScopeOpenEnded(t *testing.T, scopeYAML string) *Scope {
+	t.Helper()
+	doc := fmt.Sprintf(`
+engagement:
+  name: test
+  start: %s
+mode: enforce
+%s
+`, time.Now().Add(-time.Hour).Format(time.RFC3339), scopeYAML)
+	s, err := Parse([]byte(doc))
+	require.NoError(t, err)
+	return s
+}
+
 func TestCheck_IncludeExclude(t *testing.T) {
 	s := mustScope(t, `
 scope:
@@ -305,6 +322,25 @@ scope:
 	})
 }
 
+func TestParse_OmittedEndIsOpenEnded(t *testing.T) {
+	s := mustScopeOpenEnded(t, `
+scope:
+  include:
+    - 10.0.0.0/16
+`)
+	assert.Nil(t, s.End)
+}
+
+func TestCheck_OpenEndedNeverExpires(t *testing.T) {
+	s := mustScopeOpenEnded(t, `
+scope:
+  include:
+    - 10.0.0.0/8
+`)
+	d := s.Check(net.ParseIP("10.0.0.1"))
+	assert.True(t, d.Allowed, d.Reason)
+}
+
 func TestParse_MalformedInputs(t *testing.T) {
 	cases := []struct {
 		name            string
@@ -338,6 +374,18 @@ scope:
   include: ["10.0.0.0/8"]
 `,
 			wantErrContains: "engagement.start",
+		},
+		{
+			name: "bad end",
+			doc: `
+engagement:
+  name: x
+  start: 2026-01-01T00:00:00Z
+  end: not-a-date
+scope:
+  include: ["10.0.0.0/8"]
+`,
+			wantErrContains: "engagement.end",
 		},
 		{
 			name: "end before start",

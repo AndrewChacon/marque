@@ -13,6 +13,7 @@ import (
 
 	"github.com/AndrewChacon/red-marque/internal/engagement"
 	"github.com/AndrewChacon/red-marque/pkg/audit"
+	"github.com/AndrewChacon/red-marque/pkg/scope"
 	"github.com/spf13/cobra"
 )
 
@@ -48,6 +49,12 @@ func newAuditCmdWithStore(injected *engagement.Store) *cobra.Command {
 			if err != nil {
 				return err
 			}
+
+			s, err := scope.Load(paths.scopePath)
+			if err != nil {
+				return err
+			}
+			printEngagementHeader(cmd.OutOrStdout(), s, time.Now())
 
 			f, err := os.Open(paths.auditLogPath)
 			if err != nil {

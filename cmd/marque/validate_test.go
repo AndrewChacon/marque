@@ -29,6 +29,67 @@ mode: enforce
 	return s
 }
 
+func testScopeOpenEnded(t *testing.T, start time.Time, scopeYAML string) *scope.Scope {
+	t.Helper()
+	doc := fmt.Sprintf(`
+engagement:
+  name: test-engagement
+  start: %s
+mode: enforce
+%s
+`, start.Format(time.RFC3339), scopeYAML)
+	s, err := scope.Parse([]byte(doc))
+	require.NoError(t, err)
+	return s
+}
+
+func TestPrintValidationTable_OpenEnded(t *testing.T) {
+	s := testScopeOpenEnded(t, time.Now().Add(-time.Hour), `
+scope:
+  include:
+    - 10.0.0.0/16
+`)
+	var buf bytes.Buffer
+	printValidationTable(&buf, s)
+	out := buf.String()
+	assert.Contains(t, out, "ongoing")
+	assert.NotContains(t, out, "engagement window has ended")
+}
+
+func TestPrintValidationJSON_OpenEndedOmitsEnd(t *testing.T) {
+	s := testScopeOpenEnded(t, time.Now().Add(-time.Hour), `
+scope:
+  include:
+    - 10.0.0.0/16
+`)
+	var buf bytes.Buffer
+	require.NoError(t, printValidationJSON(&buf, s))
+	out := buf.String()
+	assert.Contains(t, out, `"status": "active"`)
+	assert.NotContains(t, out, `"end"`)
+}
+
+func TestWindowStatus_OpenEndedIsNeverExpired(t *testing.T) {
+	now := time.Now()
+	active := testScopeOpenEnded(t, now.Add(-time.Hour), "scope:\n  include:\n    - 10.0.0.0/16\n")
+	assert.Equal(t, "active", windowStatus(active, now))
+
+	upcoming := testScopeOpenEnded(t, now.Add(time.Hour), "scope:\n  include:\n    - 10.0.0.0/16\n")
+	assert.Equal(t, "upcoming", windowStatus(upcoming, now))
+}
+
+func TestWindowSummary_OpenEndedSaysOngoing(t *testing.T) {
+	now := time.Now()
+	s := testScopeOpenEnded(t, now.Add(-time.Hour), "scope:\n  include:\n    - 10.0.0.0/16\n")
+	assert.Equal(t, "ongoing — no end date", windowSummary(s, now))
+}
+
+func TestWindowDateRange_OpenEndedShowsOngoing(t *testing.T) {
+	now := time.Now()
+	s := testScopeOpenEnded(t, now.Add(-time.Hour), "scope:\n  include:\n    - 10.0.0.0/16\n")
+	assert.Contains(t, windowDateRange(s), "→ ongoing")
+}
+
 func TestPrintValidationTable_Active(t *testing.T) {
 	s := testScope(t, time.Now().Add(-time.Hour), time.Now().Add(80*time.Hour), `
 scope:
@@ -73,6 +134,18 @@ scope:
 	var buf bytes.Buffer
 	printValidationTable(&buf, s)
 	assert.Contains(t, buf.String(), "starts in 3 days")
+}
+
+func TestPrintValidationTable_UpcomingShowsLoudWarning(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	s := testScope(t, time.Now().Add(80*time.Hour), time.Now().Add(200*time.Hour), `
+scope:
+  include:
+    - 10.0.0.0/16
+`)
+	var buf bytes.Buffer
+	printValidationTable(&buf, s)
+	assert.Contains(t, buf.String(), "engagement window has not started yet")
 }
 
 func TestPrintValidationTable_NoExcludeSectionWhenEmpty(t *testing.T) {
@@ -316,4 +389,26 @@ mode: enforce
 
 	require.NoError(t, cmd.Execute())
 	assert.Contains(t, out.String(), `"status": "active"`)
+}
+
+func TestValidateCmd_JSONFlag_OpenEndedOmitsEnd(t *testing.T) {
+	path := writeTempScope(t, fmt.Sprintf(`
+engagement:
+  name: bugbounty
+  start: %s
+scope:
+  include:
+    - 10.0.0.0/16
+mode: enforce
+`, time.Now().Add(-time.Hour).Format(time.RFC3339)))
+
+	var out bytes.Buffer
+	cmd := newValidateCmd()
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"--scope", path, "--json"})
+
+	require.NoError(t, cmd.Execute())
+	assert.Contains(t, out.String(), `"status": "active"`)
+	assert.NotContains(t, out.String(), `"end"`)
 }

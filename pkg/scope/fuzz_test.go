@@ -21,6 +21,14 @@ scope:
   exclude: ["10.0.5.0/24"]
 mode: enforce
 `))
+	f.Add([]byte(`
+engagement:
+  name: seed-open-ended
+  start: 2026-01-01T00:00:00Z
+scope:
+  include: ["10.0.0.0/8"]
+mode: enforce
+`))
 	f.Add([]byte(""))
 	f.Add([]byte("not: [valid"))
 	f.Add([]byte("engagement: null"))

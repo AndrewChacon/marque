@@ -16,6 +16,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func timePtr(t time.Time) *time.Time { return &t }
+
 func TestReadAuditEntries_SkipsBlankAndCorruptLines(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "audit.jsonl")
 	good := mustMarshalEntry(t, scope.Decision{Allowed: true, Target: "10.0.0.1", Reason: "ok"})
@@ -42,8 +44,8 @@ func TestSummarizeEntries_CountsAllowedAndBlocked(t *testing.T) {
 
 func TestExportJSON_IncludesVerifyErrorWhenTampered(t *testing.T) {
 	var out bytes.Buffer
-	s := &scope.Scope{Name: "acme", Start: time.Now().Add(-time.Hour), End: time.Now().Add(time.Hour)}
-	require.NoError(t, exportJSON(&out, s, nil, assert.AnError))
+	s := &scope.Scope{Name: "acme", Start: time.Now().Add(-time.Hour), End: timePtr(time.Now().Add(time.Hour))}
+	require.NoError(t, exportJSON(&out, "", s, nil, assert.AnError))
 
 	var doc exportDoc
 	require.NoError(t, json.Unmarshal(out.Bytes(), &doc))
@@ -53,8 +55,8 @@ func TestExportJSON_IncludesVerifyErrorWhenTampered(t *testing.T) {
 
 func TestExportJSON_VerifiedWhenNoError(t *testing.T) {
 	var out bytes.Buffer
-	s := &scope.Scope{Name: "acme", Start: time.Now().Add(-time.Hour), End: time.Now().Add(time.Hour)}
-	require.NoError(t, exportJSON(&out, s, nil, nil))
+	s := &scope.Scope{Name: "acme", Start: time.Now().Add(-time.Hour), End: timePtr(time.Now().Add(time.Hour))}
+	require.NoError(t, exportJSON(&out, "", s, nil, nil))
 
 	var doc exportDoc
 	require.NoError(t, json.Unmarshal(out.Bytes(), &doc))
@@ -64,8 +66,8 @@ func TestExportJSON_VerifiedWhenNoError(t *testing.T) {
 
 func TestExportMarkdown_BannersTamperFailure(t *testing.T) {
 	var out bytes.Buffer
-	s := &scope.Scope{Name: "acme", Start: time.Now().Add(-time.Hour), End: time.Now().Add(time.Hour)}
-	require.NoError(t, exportMarkdown(&out, s, nil, assert.AnError))
+	s := &scope.Scope{Name: "acme", Start: time.Now().Add(-time.Hour), End: timePtr(time.Now().Add(time.Hour))}
+	require.NoError(t, exportMarkdown(&out, "", s, nil, assert.AnError))
 
 	assert.Contains(t, out.String(), "WARNING")
 	assert.Contains(t, out.String(), assert.AnError.Error())
@@ -73,20 +75,20 @@ func TestExportMarkdown_BannersTamperFailure(t *testing.T) {
 
 func TestExportMarkdown_NoBannerWhenVerified(t *testing.T) {
 	var out bytes.Buffer
-	s := &scope.Scope{Name: "acme", Start: time.Now().Add(-time.Hour), End: time.Now().Add(time.Hour)}
-	require.NoError(t, exportMarkdown(&out, s, nil, nil))
+	s := &scope.Scope{Name: "acme", Start: time.Now().Add(-time.Hour), End: timePtr(time.Now().Add(time.Hour))}
+	require.NoError(t, exportMarkdown(&out, "", s, nil, nil))
 
 	assert.NotContains(t, out.String(), "WARNING")
 }
 
 func TestExportMarkdown_TableHasOneRowPerEntry(t *testing.T) {
 	var out bytes.Buffer
-	s := &scope.Scope{Name: "acme", Start: time.Now().Add(-time.Hour), End: time.Now().Add(time.Hour)}
+	s := &scope.Scope{Name: "acme", Start: time.Now().Add(-time.Hour), End: timePtr(time.Now().Add(time.Hour))}
 	entries := []audit.Entry{
 		{Timestamp: time.Now(), Decision: scope.Decision{Allowed: true, Target: "10.0.0.1", Reason: "in scope"}},
 		{Timestamp: time.Now(), Decision: scope.Decision{Allowed: false, Target: "evil.example", Reason: "excluded"}},
 	}
-	require.NoError(t, exportMarkdown(&out, s, entries, nil))
+	require.NoError(t, exportMarkdown(&out, "", s, entries, nil))
 
 	output := out.String()
 	assert.Contains(t, output, "10.0.0.1")
@@ -94,6 +96,63 @@ func TestExportMarkdown_TableHasOneRowPerEntry(t *testing.T) {
 	assert.Contains(t, output, "evil.example")
 	assert.Contains(t, output, "BLOCK")
 	assert.Equal(t, 2, strings.Count(output, "|---|"))
+}
+
+func TestExportJSON_OpenEndedOmitsWindowEnd(t *testing.T) {
+	var out bytes.Buffer
+	s := &scope.Scope{Name: "acme", Start: time.Now().Add(-time.Hour)}
+	require.NoError(t, exportJSON(&out, "", s, nil, nil))
+	assert.NotContains(t, out.String(), "window_end")
+}
+
+func TestExportMarkdown_OpenEndedShowsOngoing(t *testing.T) {
+	var out bytes.Buffer
+	s := &scope.Scope{Name: "acme", Start: time.Now().Add(-time.Hour)}
+	require.NoError(t, exportMarkdown(&out, "", s, nil, nil))
+	assert.Contains(t, out.String(), "ongoing")
+}
+
+func TestExportMarkdown_EscapesPipeAndNewlineInTarget(t *testing.T) {
+	var out bytes.Buffer
+	s := &scope.Scope{Name: "acme", Start: time.Now().Add(-time.Hour)}
+	entries := []audit.Entry{
+		{Timestamp: time.Now(), Decision: scope.Decision{Allowed: false, Target: "evil|injected\ncell", Reason: "excluded"}},
+	}
+	require.NoError(t, exportMarkdown(&out, "", s, entries, nil))
+
+	var row string
+	for _, l := range strings.Split(out.String(), "\n") {
+		if strings.Contains(l, "evil") {
+			row = l
+			break
+		}
+	}
+	require.NotEmpty(t, row, "the entry's row must survive as a single line")
+	assert.Contains(t, row, `evil\|injected cell`, "the pipe must be escaped and the newline replaced, both inline within one row")
+}
+
+func TestSanitizeForSingleLineDisplay_EscapesPipeAndStripsNewlines(t *testing.T) {
+	got := sanitizeForSingleLineDisplay("evil|injected\r\nmore\ntext")
+	assert.Equal(t, `evil\|injected more text`, got)
+}
+
+func TestExportJSON_UsesStoreKeyNotScopeFilesSelfReportedName(t *testing.T) {
+	var out bytes.Buffer
+	s := &scope.Scope{Name: "whatever-the-file-says", Start: time.Now().Add(-time.Hour)}
+	require.NoError(t, exportJSON(&out, "acme-2026q4", s, nil, nil))
+
+	var doc exportDoc
+	require.NoError(t, json.Unmarshal(out.Bytes(), &doc))
+	assert.Equal(t, "acme-2026q4", doc.Engagement)
+}
+
+func TestExportMarkdown_UsesStoreKeyNotScopeFilesSelfReportedName(t *testing.T) {
+	var out bytes.Buffer
+	s := &scope.Scope{Name: "whatever-the-file-says", Start: time.Now().Add(-time.Hour)}
+	require.NoError(t, exportMarkdown(&out, "acme-2026q4", s, nil, nil))
+
+	assert.Contains(t, out.String(), "acme-2026q4")
+	assert.NotContains(t, out.String(), "whatever-the-file-says")
 }
 
 func TestAuditExportCmd_InvalidFormatIsActionable(t *testing.T) {

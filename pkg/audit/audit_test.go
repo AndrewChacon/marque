@@ -3,6 +3,7 @@ package audit
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -231,6 +232,67 @@ func TestOpen_DetectsTamperingBeforeTheLastEntry(t *testing.T) {
 	require.Error(t, err, "tampering before the last entry must be caught on Open, not just on an explicit Verify call")
 	assert.Contains(t, err.Error(), "compromised")
 	assert.NotContains(t, err.Error(), "incomplete write")
+}
+
+// TestOpen_DetectsTamperingOnTheLastEntry is the regression test for
+// the original gap: a hash mismatch (structurally valid JSON, wrong
+// hash) on the very last line used to be indistinguishable from a
+// crash mid-write, because the old logic only asked "is this the
+// last line," never "did this line even fail to parse." Tampering
+// with the last line's content now correctly says "compromised," the
+// same as tampering anywhere else.
+func TestOpen_DetectsTamperingOnTheLastEntry(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "audit.jsonl")
+	l, err := Open(path)
+	require.NoError(t, err)
+	require.NoError(t, l.Log(decision(true, "10.0.0.1")))
+	require.NoError(t, l.Log(decision(false, "192.168.1.1")))
+	require.NoError(t, l.Close())
+
+	lines := readLines(t, path)
+	require.Len(t, lines, 2)
+
+	var tampered Entry
+	require.NoError(t, json.Unmarshal([]byte(lines[1]), &tampered))
+	tampered.Decision.Allowed = !tampered.Decision.Allowed // flip the LAST entry's decision, leaving its stored hash stale
+	rewritten, err := json.Marshal(tampered)
+	require.NoError(t, err)
+	lines[1] = string(rewritten)
+	require.NoError(t, os.WriteFile(path, []byte(strings.Join(lines, "\n")+"\n"), 0o600))
+
+	_, err = Open(path)
+	require.Error(t, err, "tampering with the last entry must be caught, not mistaken for an incomplete write")
+	assert.Contains(t, err.Error(), "compromised")
+	assert.NotContains(t, err.Error(), "incomplete write")
+}
+
+// TestLog_RollsBackOnWriteFailure is the regression test for a
+// write that fails partway through: without a rollback, the file's
+// physical tail and the in-memory l.last can disagree, and the next
+// successful Log() call forks the chain onto a stale hash. Forcing
+// the underlying fd closed is the simplest reliable way to make the
+// write itself fail in-process; a Sync-only failure takes the
+// identical rollback path (same code, same offset capture) so it
+// isn't given its own separate repro here.
+func TestLog_RollsBackOnWriteFailure(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "audit.jsonl")
+	l, err := Open(path)
+	require.NoError(t, err)
+	require.NoError(t, l.Log(decision(true, "10.0.0.1")))
+
+	sizeBefore, err := l.f.Seek(0, io.SeekEnd)
+	require.NoError(t, err)
+
+	require.NoError(t, l.f.Close()) // force the next Write to fail
+	err = l.Log(decision(true, "10.0.0.2"))
+	require.Error(t, err)
+
+	raw, err := os.OpenFile(path, os.O_RDONLY, 0)
+	require.NoError(t, err)
+	sizeAfter, err := raw.Seek(0, io.SeekEnd)
+	require.NoError(t, err)
+	require.NoError(t, raw.Close())
+	assert.Equal(t, sizeBefore, sizeAfter, "a failed write must never leave extra bytes behind")
 }
 
 func TestOpen_InvalidPath(t *testing.T) {

@@ -61,6 +61,19 @@ func TestPrintEngagementList_ParseErrorDoesNotCrashTheWholeList(t *testing.T) {
 	assert.Contains(t, output, "parse error")
 }
 
+func TestPrintEngagementList_OpenEndedShowsOngoing(t *testing.T) {
+	store := &engagement.Store{Root: t.TempDir()}
+	now := time.Now()
+	addTestEngagementOpenEnded(t, store, "bugbounty", now.Add(-time.Hour))
+
+	var out bytes.Buffer
+	printEngagementList(&out, store, []string{"bugbounty"}, "", now)
+	output := out.String()
+
+	assert.Contains(t, output, "ongoing")
+	assert.Contains(t, output, "active")
+}
+
 func TestEngagementListCmd_RunsEndToEnd(t *testing.T) {
 	store := &engagement.Store{Root: t.TempDir()}
 	addTestEngagement(t, store, "acme-2026q4", time.Now().Add(-time.Hour), time.Now().Add(time.Hour))

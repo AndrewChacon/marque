@@ -53,13 +53,10 @@ func runProxyStop(cmd *cobra.Command, store *engagement.Store) error {
 	}
 
 	deadline := time.Now().Add(proxyStopGracePeriod)
-	for time.Now().Before(deadline) {
-		if !processAlive(info.PID) {
-			_ = removeProxyPID(store) // defensive — the child's own deferred cleanup should have already done this
-			fmt.Fprintf(out, "stopped proxy (pid %d)\n", info.PID)
-			return nil
-		}
-		time.Sleep(100 * time.Millisecond)
+	if waitForExit(func() bool { return processAlive(info.PID) }, deadline, 100*time.Millisecond) {
+		_ = removeProxyPID(store) // defensive — the child's own deferred cleanup should have already done this
+		fmt.Fprintf(out, "stopped proxy (pid %d)\n", info.PID)
+		return nil
 	}
 
 	if err := syscall.Kill(info.PID, syscall.SIGKILL); err != nil {
@@ -68,4 +65,19 @@ func runProxyStop(cmd *cobra.Command, store *engagement.Store) error {
 	_ = removeProxyPID(store) // a killed process can't run its own cleanup
 	fmt.Fprintf(out, "proxy (pid %d) did not exit within %s — sent SIGKILL\n", info.PID, proxyStopGracePeriod)
 	return nil
+}
+
+// waitForExit polls aliveFn every pollInterval until deadline,
+// reporting true the moment it sees the process dead — including one
+// final check right at the deadline itself, so a process that exits
+// during the very last sleep isn't missed and misreported as having
+// failed to respond to SIGTERM.
+func waitForExit(aliveFn func() bool, deadline time.Time, pollInterval time.Duration) bool {
+	for time.Now().Before(deadline) {
+		if !aliveFn() {
+			return true
+		}
+		time.Sleep(pollInterval)
+	}
+	return !aliveFn()
 }

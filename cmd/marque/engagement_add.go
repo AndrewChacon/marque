@@ -43,7 +43,8 @@ func newEngagementAddCmdWithStore(injected *engagement.Store) *cobra.Command {
 				doc = generated
 			}
 
-			if _, err := scope.Parse(doc); err != nil {
+			s, err := scope.Parse(doc)
+			if err != nil {
 				return err
 			}
 
@@ -51,11 +52,26 @@ func newEngagementAddCmdWithStore(injected *engagement.Store) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if store.Exists(name) {
+				return fmt.Errorf("engagement %q already exists (%s) — edit its scope.yaml directly, or `marque engagement list` / pick a different name", name, store.ScopePath(name))
+			}
 			if err := store.Add(name, doc); err != nil {
 				return err
 			}
 
 			fmt.Fprintf(cmd.OutOrStdout(), "added engagement %q (%s)\n", name, store.ScopePath(name))
+
+			active, err := store.Active()
+			if err != nil {
+				return err
+			}
+			if active == "" {
+				if err := store.SetActive(name); err != nil {
+					return err
+				}
+				printAutoActivateNotice(cmd.OutOrStdout(), name, s, time.Now())
+			}
+
 			return nil
 		},
 	}
@@ -64,12 +80,27 @@ func newEngagementAddCmdWithStore(injected *engagement.Store) *cobra.Command {
 	return cmd
 }
 
+// printAutoActivateNotice is printSwitchConfirmation's sibling for the
+// zero-to-one transition: when `engagement add` runs with nothing
+// currently active, the new engagement is auto-activated rather than
+// requiring a separate `engagement use`. Same expired-window warning
+// shape, different lead verb, since this wasn't a deliberate switch
+// away from something else — see docs/UX_FLOW.md.
+func printAutoActivateNotice(w io.Writer, name string, s *scope.Scope, now time.Time) {
+	if windowStatus(s, now) != "active" {
+		fmt.Fprintf(w, "no active engagement — automatically activated %s — %s\n", keyedLabel(name, s),
+			colorize(colorRed, fmt.Sprintf("WARNING: this engagement %s", windowSummary(s, now))))
+		return
+	}
+	fmt.Fprintf(w, "no active engagement — automatically activated %s\n", keyedLabel(name, s))
+}
+
 type wizardScopeFile struct {
 	Engagement struct {
 		Name   string `yaml:"name"`
 		Client string `yaml:"client,omitempty"`
 		Start  string `yaml:"start"`
-		End    string `yaml:"end"`
+		End    string `yaml:"end,omitempty"`
 	} `yaml:"engagement"`
 	Scope struct {
 		Include []string `yaml:"include"`
@@ -111,13 +142,17 @@ func runWizard(r io.Reader, w io.Writer, name string) ([]byte, error) {
 		return nil, err
 	}
 
-	endStr, err := prompt("Engagement end date (YYYY-MM-DD)")
+	endStr, err := prompt("Engagement end date (YYYY-MM-DD, leave blank if ongoing — e.g. a bug bounty with no fixed end)")
 	if err != nil {
 		return nil, err
 	}
-	end, err := parseWizardDate(endStr)
-	if err != nil {
-		return nil, err
+	var end *time.Time
+	if endStr != "" {
+		parsedEnd, err := parseWizardDate(endStr)
+		if err != nil {
+			return nil, err
+		}
+		end = &parsedEnd
 	}
 
 	fmt.Fprintln(w, "Paste your in-scope CIDRs/domains (comma- or newline-separated, blank line to finish):")
@@ -163,12 +198,14 @@ func promptList(scanner *bufio.Scanner) ([]string, error) {
 	return all, scanner.Err()
 }
 
-func buildScopeYAML(name, client string, start, end time.Time, include, exclude []string) ([]byte, error) {
+func buildScopeYAML(name, client string, start time.Time, end *time.Time, include, exclude []string) ([]byte, error) {
 	var f wizardScopeFile
 	f.Engagement.Name = name
 	f.Engagement.Client = client
 	f.Engagement.Start = start.UTC().Format(time.RFC3339)
-	f.Engagement.End = end.UTC().Format(time.RFC3339)
+	if end != nil {
+		f.Engagement.End = end.UTC().Format(time.RFC3339)
+	}
 	f.Scope.Include = include
 	f.Scope.Exclude = exclude
 	return yaml.Marshal(f)

@@ -73,6 +73,29 @@ scope:
 	assert.Contains(t, out, "127.0.0.1:1080")
 }
 
+func TestCheckProxyPreflight_OpenEndedNeverRefuses(t *testing.T) {
+	now := time.Now()
+	s := testScopeOpenEnded(t, now.Add(-time.Hour), `
+scope:
+  include:
+    - 10.0.0.0/16
+`)
+	assert.NoError(t, checkProxyPreflight(s, false, now))
+}
+
+func TestPrintProxyBanner_OpenEnded(t *testing.T) {
+	now := time.Now()
+	s := testScopeOpenEnded(t, now.Add(-time.Hour), `
+scope:
+  include:
+    - 10.0.0.0/16
+`)
+
+	var buf bytes.Buffer
+	printProxyBanner(&buf, s, "127.0.0.1:1080")
+	assert.Contains(t, buf.String(), "ongoing")
+}
+
 func TestPrintDecision_Text(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 

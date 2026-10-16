@@ -64,7 +64,11 @@ func printEngagementList(w io.Writer, store *engagement.Store, names []string, a
 			continue
 		}
 
-		window := fmt.Sprintf("%s - %s", s.Start.Format("Jan 02 2006"), s.End.Format("Jan 02 2006"))
+		endStr := "ongoing"
+		if s.End != nil {
+			endStr = s.End.Format("Jan 02 2006")
+		}
+		window := fmt.Sprintf("%s - %s", s.Start.Format("Jan 02 2006"), endStr)
 		fmt.Fprintf(tw, "%s %s\t%s\t%s\t%s\n", marker, name, s.Client, window, windowStatus(s, now))
 	}
 	tw.Flush()

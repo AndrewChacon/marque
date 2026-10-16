@@ -126,6 +126,12 @@ type chainBreak struct {
 	lineNo      int
 	reason      error
 	moreFollows bool
+	// unreadable is true only when the line failed to unmarshal as an
+	// Entry at all — the one break shape a crash mid-write actually
+	// produces. A line that unmarshals cleanly but whose prev_hash or
+	// hash doesn't check out is never a truncation artifact, no matter
+	// its position in the file, and must not be reported as one.
+	unreadable bool
 }
 
 // walkChain scans every line of an audit log, verifying the hash
@@ -154,7 +160,7 @@ func walkChain(r io.Reader) (lastGoodHash string, brk *chainBreak, err error) {
 
 		var e Entry
 		if uerr := json.Unmarshal(line, &e); uerr != nil {
-			brk = &chainBreak{lineNo: lineNo, reason: uerr}
+			brk = &chainBreak{lineNo: lineNo, reason: uerr, unreadable: true}
 			continue
 		}
 		if e.PrevHash != prev {
@@ -200,10 +206,10 @@ func lastHash(f *os.File) (string, error) {
 	if brk == nil {
 		return last, nil
 	}
-	if brk.moreFollows {
-		return "", fmt.Errorf("existing audit log failed verification at line %d: %w — a crash wouldn't produce this; treat this log as compromised", brk.lineNo, brk.reason)
+	if brk.unreadable && !brk.moreFollows {
+		return "", fmt.Errorf("existing audit log: entry at line %d is unreadable, but the chain before it verifies cleanly — this looks like an incomplete write (e.g. a crash), not tampering. To resume, remove that incomplete last line and try again: %w", brk.lineNo, brk.reason)
 	}
-	return "", fmt.Errorf("existing audit log: entry at line %d is unreadable, but the chain before it verifies cleanly — this looks like an incomplete write (e.g. a crash), not tampering. To resume, remove that incomplete last line and try again: %w", brk.lineNo, brk.reason)
+	return "", fmt.Errorf("existing audit log failed verification at line %d: %w — a crash wouldn't produce this; treat this log as compromised", brk.lineNo, brk.reason)
 }
 
 // Log appends a decision to the log, chained onto the previous entry.
@@ -229,10 +235,17 @@ func (l *Log) Log(d scope.Decision) error {
 	}
 	line = append(line, '\n')
 
+	offset, err := l.f.Seek(0, io.SeekEnd)
+	if err != nil {
+		return fmt.Errorf("seeking audit log: %w", err)
+	}
+
 	if _, err := l.f.Write(line); err != nil {
+		_ = l.f.Truncate(offset) // roll back a partial write — never leave bytes the chain doesn't account for
 		return fmt.Errorf("writing audit entry: %w", err)
 	}
 	if err := l.f.Sync(); err != nil {
+		_ = l.f.Truncate(offset) // bytes landed but aren't durable and l.last won't advance — don't leave them for the next Log() call to silently fork onto
 		return fmt.Errorf("syncing audit entry: %w", err)
 	}
 

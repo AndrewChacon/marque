@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/AndrewChacon/red-marque/internal/engagement"
 	"github.com/AndrewChacon/red-marque/pkg/scope"
@@ -42,6 +43,10 @@ func newRunCmdWithStore(injected *engagement.Store) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if windowStatus(s, time.Now()) == "expired" {
+				return fmt.Errorf("refusing to run: engagement window ended %s", s.End.Format(time.RFC3339))
+			}
+			printEngagementHeader(cmd.OutOrStdout(), s, time.Now())
 
 			log, err := openAuditLogWithHint(paths.auditLogPath)
 			if err != nil {
@@ -84,6 +89,34 @@ var (
 	hostnameRE = regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$`)
 )
 
+// commonFileExtensions filters out argv tokens that are far more
+// likely to be a tool's input/output filename than a target hostname
+// — "scan.xml", "wordlist.txt", "exploit.py" are structurally
+// identical to a hostname to hostnameRE, and these are exactly the
+// tokens real pentest tool invocations are full of (-oX scan.xml,
+// -w wordlist.txt, a .nse script, a .jar tool). This is a heuristic,
+// not a classifier: a real target under one of these as a ccTLD
+// (vanishingly rare in practice) would be missed — acceptable for a
+// best-effort safety net that's explicitly not a sandbox.
+var commonFileExtensions = map[string]bool{
+	"txt": true, "xml": true, "json": true, "csv": true, "log": true,
+	"py": true, "sh": true, "rb": true, "pl": true, "go": true,
+	"nse": true, "lua": true, "yaml": true, "yml": true, "conf": true,
+	"cfg": true, "ini": true, "jar": true, "war": true, "class": true,
+	"gnmap": true, "nmap": true, "xlsx": true, "docx": true, "pdf": true,
+	"md": true, "html": true, "htm": true, "zip": true, "tar": true,
+	"gz": true, "db": true, "sqlite": true, "pem": true, "key": true,
+	"crt": true, "pcap": true,
+}
+
+func hasKnownFileExtension(token string) bool {
+	i := strings.LastIndexByte(token, '.')
+	if i < 0 {
+		return false
+	}
+	return commonFileExtensions[strings.ToLower(token[i+1:])]
+}
+
 // extractTargets is the best-effort regex scan the brief calls for —
 // explicitly not per-tool argument parsing. Three passes per arg,
 // most specific first: a URL's own hostname, then "the whole token is
@@ -110,7 +143,7 @@ func extractTargets(args []string) []string {
 			}
 		}
 
-		if net.ParseIP(arg) != nil || hostnameRE.MatchString(arg) {
+		if net.ParseIP(arg) != nil || (hostnameRE.MatchString(arg) && !hasKnownFileExtension(arg)) {
 			add(arg)
 			continue
 		}

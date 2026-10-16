@@ -43,7 +43,8 @@ marque engagement add acme-2026q4
 ```
 
 Interactive wizard (not a blank YAML file to hand-write):
-- Engagement name, client, start/end dates
+- Engagement name, client, start date, and an optional end date (leave
+  blank for an open-ended engagement, e.g. a bug bounty program)
 - "Paste your in-scope CIDRs/domains" (accepts comma- or newline-
   separated input, one prompt, not one-at-a-time nagging)
 - "Any exclusions?" — its own explicit step, since exclusions are where
@@ -174,6 +175,11 @@ optional polish:
   library itself).
 - `--scope <path>` remains available as a one-off override on any
   command and always wins over the active context.
+- `marque engagement add <name>` auto-activates the new engagement only
+  when *no* engagement is currently active at all (first-ever add, or
+  after none is set) — it never overrides an already-active one.
+  Switching between two existing engagements still always requires an
+  explicit `marque engagement use <name>`.
 
 ---
 
@@ -193,6 +199,11 @@ optional polish:
   invalid — prefix must be 0–32," never a raw stack trace.
 - **Scriptable escape hatch** — `--json` on every command, `NO_COLOR`
   respected.
+- **Ambient status, on demand, never ambient by default** —
+  `marque engagement current` prints a one-line "what's active"
+  summary (plus `--json`/`--short` for scripting), but marque never
+  touches the terminal title or writes to a shell prompt itself;
+  wiring it into PS1/starship is the user's own opt-in choice.
 
 ---
 
@@ -202,6 +213,7 @@ optional polish:
 marque engagement add <name> [--scope file.yaml]   # wizard or file import
 marque engagement use <name>                        # set active context
 marque engagement list                              # show all, with status
+marque engagement current [--json] [--short]        # show what's active now
 marque validate [--scope file.yaml]                 # preflight check
 marque proxy [--scope file.yaml] [--force] [--foreground]  # SOCKS5 + HTTP CONNECT proxy, backgrounds by default
 marque proxy stop                                   # stop the backgrounded proxy

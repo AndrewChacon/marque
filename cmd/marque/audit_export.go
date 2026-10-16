@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/AndrewChacon/red-marque/internal/engagement"
@@ -53,9 +54,9 @@ func newAuditExportCmd(injected *engagement.Store) *cobra.Command {
 			verifyErr := audit.Verify(paths.auditLogPath)
 
 			if format == "json" {
-				return exportJSON(cmd.OutOrStdout(), s, entries, verifyErr)
+				return exportJSON(cmd.OutOrStdout(), paths.engagement, s, entries, verifyErr)
 			}
-			return exportMarkdown(cmd.OutOrStdout(), s, entries, verifyErr)
+			return exportMarkdown(cmd.OutOrStdout(), paths.engagement, s, entries, verifyErr)
 		},
 	}
 
@@ -112,7 +113,7 @@ type exportDoc struct {
 	Engagement  string        `json:"engagement"`
 	Client      string        `json:"client,omitempty"`
 	WindowStart time.Time     `json:"window_start"`
-	WindowEnd   time.Time     `json:"window_end"`
+	WindowEnd   *time.Time    `json:"window_end,omitempty"`
 	Status      string        `json:"status"`
 	Mode        scope.Mode    `json:"mode"`
 	Verified    bool          `json:"verified"`
@@ -121,9 +122,9 @@ type exportDoc struct {
 	Entries     []audit.Entry `json:"entries"`
 }
 
-func exportJSON(w io.Writer, s *scope.Scope, entries []audit.Entry, verifyErr error) error {
+func exportJSON(w io.Writer, key string, s *scope.Scope, entries []audit.Entry, verifyErr error) error {
 	doc := exportDoc{
-		Engagement:  s.Name,
+		Engagement:  resolvedEngagementName(key, s),
 		Client:      s.Client,
 		WindowStart: s.Start,
 		WindowEnd:   s.End,
@@ -142,8 +143,8 @@ func exportJSON(w io.Writer, s *scope.Scope, entries []audit.Entry, verifyErr er
 	return enc.Encode(doc)
 }
 
-func exportMarkdown(w io.Writer, s *scope.Scope, entries []audit.Entry, verifyErr error) error {
-	fmt.Fprintf(w, "# Audit export — %s\n\n", engagementLabel(s))
+func exportMarkdown(w io.Writer, key string, s *scope.Scope, entries []audit.Entry, verifyErr error) error {
+	fmt.Fprintf(w, "# Audit export — %s\n\n", keyedLabel(key, s))
 
 	if verifyErr != nil {
 		fmt.Fprintf(w, "> **⚠ WARNING: audit log failed tamper verification: %s**\n>\n> The entries below are exported as-is but may not reflect what actually happened.\n\n", verifyErr)
@@ -162,7 +163,25 @@ func exportMarkdown(w io.Writer, s *scope.Scope, entries []audit.Entry, verifyEr
 		if !e.Decision.Allowed {
 			decision = "BLOCK"
 		}
-		fmt.Fprintf(w, "| %s | %s | %s | %s |\n", e.Timestamp.Format(time.RFC3339), decision, e.Decision.Target, e.Decision.Reason)
+		fmt.Fprintf(w, "| %s | %s | %s | %s |\n", e.Timestamp.Format(time.RFC3339), decision,
+			sanitizeForSingleLineDisplay(e.Decision.Target), sanitizeForSingleLineDisplay(e.Decision.Reason))
 	}
 	return nil
+}
+
+// sanitizeForSingleLineDisplay makes a string safe to render as a
+// single line of output — one markdown table cell, or one terminal
+// row. Decision.Target in particular is not operator-authored: it
+// comes from whatever a SOCKS5 client sends as a raw domain field
+// (internal/proxy/socks5.go parses it with zero character
+// validation), so a literal "|" or an embedded newline is a real,
+// reachable input, not a hypothetical one — a newline would let one
+// decision masquerade as several fabricated lines, and an
+// unescaped "|" would shift a markdown table's columns.
+func sanitizeForSingleLineDisplay(s string) string {
+	s = strings.ReplaceAll(s, "|", `\|`)
+	s = strings.ReplaceAll(s, "\r\n", " ")
+	s = strings.ReplaceAll(s, "\n", " ")
+	s = strings.ReplaceAll(s, "\r", " ")
+	return s
 }

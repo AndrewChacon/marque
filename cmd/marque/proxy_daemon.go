@@ -306,13 +306,30 @@ func defaultWriteDaemonHandshake(hs daemonHandshake) {
 	_, _ = f.Write(data) // this is the child's only channel back to the parent — nothing to do if it fails
 }
 
-// writeProxyPID records info as the backgrounded proxy's PID file.
+// writeProxyPID atomically claims the single global proxy PID file.
+// O_EXCL means two near-simultaneous daemon children — started
+// against different engagements/ports, both having passed the
+// parent's own liveness check before either wrote anything — can't
+// silently clobber each other: the loser gets a clear error instead
+// of orphaning the winner from status/stop/doctor. By the time this
+// runs, daemonizeProxy's own readProxyPID call has already cleaned up
+// any genuinely stale file from an earlier crash, so a collision here
+// always means a real second writer, not leftover staleness.
 func writeProxyPID(store *engagement.Store, info proxyDaemonInfo) error {
 	data, err := json.Marshal(info)
 	if err != nil {
 		return fmt.Errorf("encoding proxy pid info: %w", err)
 	}
-	if err := os.WriteFile(store.ProxyPIDPath(), data, 0o600); err != nil {
+
+	f, err := os.OpenFile(store.ProxyPIDPath(), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	if err != nil {
+		if os.IsExist(err) {
+			return fmt.Errorf("another marque proxy claimed the pid file first (started concurrently) — run `marque proxy status` to see which one won, `marque proxy stop` the other if this one should take over")
+		}
+		return fmt.Errorf("writing proxy pid file: %w", err)
+	}
+	defer f.Close()
+	if _, err := f.Write(data); err != nil {
 		return fmt.Errorf("writing proxy pid file: %w", err)
 	}
 	return nil

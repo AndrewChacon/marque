@@ -49,6 +49,17 @@ func TestExtractTargets_NoTargetsIsEmptyNotError(t *testing.T) {
 	assert.Empty(t, extractTargets([]string{"ls", "-la"}))
 }
 
+func TestExtractTargets_IgnoresCommonFilenames(t *testing.T) {
+	for _, f := range []string{"scan.xml", "wordlist.txt", "exploit.py", "app.sh", "results.gnmap"} {
+		assert.Empty(t, extractTargets([]string{"nmap", "-oX", f}), "filename %q must not be extracted as a target", f)
+	}
+}
+
+func TestExtractTargets_RealisticNmapInvocationOnlyExtractsTheRealTarget(t *testing.T) {
+	got := extractTargets([]string{"nmap", "-sV", "-oX", "scan.xml", "target.com"})
+	assert.Equal(t, []string{"target.com"}, got)
+}
+
 type fakeAuditLogger struct {
 	entries []scope.Decision
 	failErr error
@@ -122,6 +133,40 @@ scope:
 func TestExecCommand_UnknownCommandIsActionable(t *testing.T) {
 	err := execCommand([]string{"this-command-does-not-exist-anywhere"})
 	require.Error(t, err)
+}
+
+func TestRunCmd_RefusesOnExpiredWindowEvenWithNoExtractableTarget(t *testing.T) {
+	store := &engagement.Store{Root: t.TempDir()}
+	addTestEngagement(t, store, "acme", time.Now().Add(-96*time.Hour), time.Now().Add(-48*time.Hour))
+	require.NoError(t, store.SetActive("acme"))
+
+	cmd := newRunCmdWithStore(store)
+	cmd.SilenceErrors = true
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetArgs([]string{"--", "whoami"}) // argv has no hostname/IP-shaped token at all
+
+	err := cmd.Execute()
+	require.Error(t, err, "an expired window must refuse even when nothing was extracted to check")
+	assert.Contains(t, err.Error(), "window ended")
+}
+
+func TestRunCmd_PrintsEngagementHeader(t *testing.T) {
+	store := &engagement.Store{Root: t.TempDir()}
+	addTestEngagement(t, store, "acme", time.Now().Add(-time.Hour), time.Now().Add(time.Hour))
+	require.NoError(t, store.SetActive("acme"))
+
+	cmd := newRunCmdWithStore(store)
+	cmd.SilenceErrors = true
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	// Out of scope, same as TestRunCmd_RefusesOutOfScopeBeforeExec — refuses
+	// before ever exec'ing, so this never risks execCommand's syscall.Exec
+	// actually replacing the test binary's process image.
+	cmd.SetArgs([]string{"--", "echo", "192.168.1.1"})
+
+	err := cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, out.String(), "RedMarque — engagement: acme")
 }
 
 func TestRunCmd_RefusesOutOfScopeBeforeExec(t *testing.T) {

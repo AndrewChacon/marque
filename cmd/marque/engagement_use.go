@@ -38,17 +38,17 @@ func newEngagementUseCmdWithStore(injected *engagement.Store) *cobra.Command {
 				return err
 			}
 
-			printSwitchConfirmation(cmd.OutOrStdout(), s, time.Now())
+			printSwitchConfirmation(cmd.OutOrStdout(), name, s, time.Now())
 			return nil
 		},
 	}
 }
 
-func printSwitchConfirmation(w io.Writer, s *scope.Scope, now time.Time) {
-	if windowStatus(s, now) == "expired" {
-		fmt.Fprintf(w, "switched to %s — %s\n", engagementLabel(s),
+func printSwitchConfirmation(w io.Writer, name string, s *scope.Scope, now time.Time) {
+	if windowStatus(s, now) != "active" {
+		fmt.Fprintf(w, "switched to %s — %s\n", keyedLabel(name, s),
 			colorize(colorRed, fmt.Sprintf("WARNING: this engagement %s", windowSummary(s, now))))
 		return
 	}
-	fmt.Fprintf(w, "switched to %s\n", engagementLabel(s))
+	fmt.Fprintf(w, "switched to %s\n", keyedLabel(name, s))
 }

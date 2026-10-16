@@ -89,6 +89,42 @@ func TestRunProxyStop_EscalatesToSIGKILLWhenUnresponsive(t *testing.T) {
 	assert.False(t, alive)
 }
 
+// TestWaitForExit_CatchesDeathDuringTheFinalSleep is the regression
+// test for the original bug, exercised deterministically rather than
+// by racing a real process against the wall clock: aliveFn reports
+// alive for the two checks that happen inside the loop (at the start
+// and after the first 100ms sleep), then dead — simulating a process
+// that exits during the loop's last, deadline-overshooting sleep.
+// Without the trailing check after the loop, that death would never
+// be observed and waitForExit would wrongly report "still alive."
+func TestWaitForExit_CatchesDeathDuringTheFinalSleep(t *testing.T) {
+	calls := 0
+	aliveFn := func() bool {
+		calls++
+		return calls <= 2
+	}
+	deadline := time.Now().Add(150 * time.Millisecond)
+
+	assert.True(t, waitForExit(aliveFn, deadline, 100*time.Millisecond))
+	assert.Equal(t, 3, calls, "must check once more after the loop's deadline-overshooting sleep exits it")
+}
+
+func TestWaitForExit_StillAliveAtDeadlineReturnsFalse(t *testing.T) {
+	aliveFn := func() bool { return true }
+	deadline := time.Now().Add(50 * time.Millisecond)
+
+	assert.False(t, waitForExit(aliveFn, deadline, 10*time.Millisecond))
+}
+
+func TestWaitForExit_AlreadyDeadBeforeTheFirstCheckReturnsImmediately(t *testing.T) {
+	aliveFn := func() bool { return false }
+	deadline := time.Now().Add(time.Second)
+
+	start := time.Now()
+	assert.True(t, waitForExit(aliveFn, deadline, 100*time.Millisecond))
+	assert.Less(t, time.Since(start), 50*time.Millisecond, "must not sleep at all once already dead")
+}
+
 // setShortProxyStopGrace shrinks the stop grace period for the
 // duration of a test, so exercising the escalation path doesn't
 // actually wait out the real 5s default.

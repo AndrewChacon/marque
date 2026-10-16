@@ -131,12 +131,17 @@ scope:
 `include` entry is — a broad `/16` grant with carved-out production
 hosts is a common real ROE shape, and the carve-out has to hold.
 
+`engagement.end` is optional — omit it for an open-ended engagement
+(e.g. a bug bounty program with no fixed end date); `marque` then
+shows "ongoing" everywhere a dated window would otherwise appear.
+
 ## CLI surface
 
 ```
 marque engagement add <name> [--scope file.yaml]   # wizard or file import
 marque engagement use <name>                        # set active context
 marque engagement list                              # show all, with status
+marque engagement current [--json] [--short]        # show what's active now
 marque validate [--scope file.yaml]                 # preflight check
 marque proxy [--scope file.yaml] [--force] [--foreground]  # SOCKS5 + HTTP CONNECT proxy, backgrounds by default
 marque proxy stop                                   # stop the backgrounded proxy

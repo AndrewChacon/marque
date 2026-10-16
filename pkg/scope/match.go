@@ -130,7 +130,7 @@ func (s *Scope) decide(allowed bool, reason, rule, target string) Decision {
 			Reason:  fmt.Sprintf("engagement window has not started yet (begins %s)", s.Start.Format(time.RFC3339)),
 		}
 	}
-	if now.After(s.End) {
+	if s.End != nil && now.After(*s.End) {
 		return Decision{
 			Allowed: false,
 			Mode:    s.Mode,
