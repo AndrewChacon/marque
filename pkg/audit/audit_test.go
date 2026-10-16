@@ -266,14 +266,48 @@ func TestOpen_DetectsTamperingOnTheLastEntry(t *testing.T) {
 	assert.NotContains(t, err.Error(), "incomplete write")
 }
 
-// TestLog_RollsBackOnWriteFailure is the regression test for a
-// write that fails partway through: without a rollback, the file's
-// physical tail and the in-memory l.last can disagree, and the next
-// successful Log() call forks the chain onto a stale hash. Forcing
-// the underlying fd closed is the simplest reliable way to make the
-// write itself fail in-process; a Sync-only failure takes the
-// identical rollback path (same code, same offset capture) so it
-// isn't given its own separate repro here.
+// TestLog_ReturnsErrorWhenSeekFails is what the old
+// "TestLog_RollsBackOnWriteFailure" actually exercised, discovered
+// while chasing pkg/audit's coverage gaps during the extensive-
+// testing pass: closing l.f makes the *next* Seek call fail too
+// (Seek on a closed file errors identically to Write), so that test
+// never reached the Write call it claimed to be testing at all. Kept
+// as its own real, correctly-named test for the Seek-failure branch;
+// see TestLog_RollsBackOnWriteFailure below for the branch it was
+// supposed to cover.
+func TestLog_ReturnsErrorWhenSeekFails(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "audit.jsonl")
+	l, err := Open(path)
+	require.NoError(t, err)
+	require.NoError(t, l.Log(decision(true, "10.0.0.1")))
+	require.NoError(t, l.f.Close())
+
+	err = l.Log(decision(true, "10.0.0.2"))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "seeking audit log")
+}
+
+// TestLog_RollsBackOnWriteFailure is the regression test for a write
+// that fails partway through: without a rollback, the file's physical
+// tail and the in-memory l.last can disagree, and the next successful
+// Log() call forks the chain onto a stale hash. Swapping l.f for a
+// read-only handle on the same path lets Seek succeed (no write
+// permission needed) while Write fails with EBADF — the Write-failure
+// branch specifically, not Seek's (closing the fd outright, as an
+// earlier version of this test did, fails at Seek instead and never
+// reaches Write at all).
+//
+// The Sync-only-fails branch takes the identical rollback code path
+// (same Truncate(offset) call) but isn't given its own repro: reliably
+// forcing fsync() to fail while a preceding write() to the same fd
+// just succeeded needs OS-level fault injection (a failing block
+// device, a restricted filesystem) that isn't practical to simulate
+// portably in a unit test. Introducing a Sync-able interface seam
+// purely to make this one branch mockable was considered and rejected
+// — this codebase deliberately favors concrete types over interfaces
+// added for testability alone (see pkg/scope and pkg/audit's existing
+// design), and the risk here is adequately covered by this test
+// exercising the same rollback logic from the Write side.
 func TestLog_RollsBackOnWriteFailure(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "audit.jsonl")
 	l, err := Open(path)
@@ -283,15 +317,18 @@ func TestLog_RollsBackOnWriteFailure(t *testing.T) {
 	sizeBefore, err := l.f.Seek(0, io.SeekEnd)
 	require.NoError(t, err)
 
-	require.NoError(t, l.f.Close()) // force the next Write to fail
+	require.NoError(t, l.f.Close())
+	roFile, err := os.OpenFile(path, os.O_RDONLY, 0)
+	require.NoError(t, err)
+	defer roFile.Close()
+	l.f = roFile
+
 	err = l.Log(decision(true, "10.0.0.2"))
 	require.Error(t, err)
+	assert.Contains(t, err.Error(), "writing audit entry", "must fail at the Write call specifically, not an earlier Seek")
 
-	raw, err := os.OpenFile(path, os.O_RDONLY, 0)
+	sizeAfter, err := roFile.Seek(0, io.SeekEnd)
 	require.NoError(t, err)
-	sizeAfter, err := raw.Seek(0, io.SeekEnd)
-	require.NoError(t, err)
-	require.NoError(t, raw.Close())
 	assert.Equal(t, sizeBefore, sizeAfter, "a failed write must never leave extra bytes behind")
 }
 

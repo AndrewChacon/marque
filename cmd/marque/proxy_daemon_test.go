@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"syscall"
 	"testing"
 	"time"
 
@@ -340,4 +341,70 @@ func TestRunProxyChild_AuditLogLockedReportsOverHandshake(t *testing.T) {
 	require.Len(t, *sent, 1)
 	assert.False(t, (*sent)[0].OK)
 	assert.Contains(t, (*sent)[0].Error, "already open for writing")
+}
+
+// TestRunProxyChild_HappyPathServesUntilSignaled exercises the one
+// large piece of runProxyChild no existing test reached: the full
+// success path past net.Listen — PID file written, handshake sent
+// with OK:true, the real proxy.Serve loop running — and its graceful
+// shutdown via the same SIGTERM the real detached child listens for.
+// Previously this was only ever verified manually against a real
+// build; this covers it at the `go test` level too. Sends SIGTERM to
+// this test process's own PID, which is safe here specifically
+// because runProxyChild's signal.NotifyContext is registered (and,
+// via its deferred stop(), unregistered) for the exact duration of
+// this one call.
+func TestRunProxyChild_HappyPathServesUntilSignaled(t *testing.T) {
+	// A channel, not withFakeWriteDaemonHandshake's plain slice: the
+	// handshake is written from runProxyChild's own goroutine and read
+	// from the test's main goroutine, and a bare slice shared across
+	// goroutines with no synchronization is a real data race under
+	// -race — confirmed by hitting it the first time this test was
+	// written with require.Eventually polling the slice directly.
+	hsCh := make(chan daemonHandshake, 1)
+	origHandshake := writeDaemonHandshake
+	writeDaemonHandshake = func(hs daemonHandshake) { hsCh <- hs }
+	t.Cleanup(func() { writeDaemonHandshake = origHandshake })
+
+	store := &engagement.Store{Root: t.TempDir()}
+	addTestEngagement(t, store, "acme", time.Now().Add(-time.Hour), time.Now().Add(time.Hour))
+	require.NoError(t, store.SetActive("acme"))
+
+	cmd := newProxyCmdWithStore(store)
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+
+	done := make(chan error, 1)
+	go func() {
+		done <- runProxyChild(cmd, store, proxyOptions{listenAddr: "127.0.0.1:0"})
+	}()
+
+	var hs daemonHandshake
+	select {
+	case hs = <-hsCh:
+	case <-time.After(2 * time.Second):
+		t.Fatal("handshake was never sent")
+	}
+	require.True(t, hs.OK)
+	assert.NotEmpty(t, hs.ListenAddr)
+	assert.Contains(t, hs.Banner, "acme")
+
+	info, alive, err := readProxyPID(store)
+	require.NoError(t, err)
+	require.True(t, alive)
+	assert.Equal(t, os.Getpid(), info.PID)
+	assert.Equal(t, "acme", info.Engagement)
+
+	require.NoError(t, syscall.Kill(os.Getpid(), syscall.SIGTERM))
+
+	select {
+	case err := <-done:
+		require.NoError(t, err, "a graceful shutdown via SIGTERM must return nil, not surface net.ErrClosed as a failure")
+	case <-time.After(2 * time.Second):
+		t.Fatal("runProxyChild did not return after SIGTERM")
+	}
+
+	_, alive, err = readProxyPID(store)
+	require.NoError(t, err)
+	assert.False(t, alive, "the PID file must be cleaned up after shutdown")
 }

@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/binary"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -171,6 +173,86 @@ type bufferedConn struct {
 
 func (b *bufferedConn) Read(p []byte) (int, error) { return b.r.Read(p) }
 
+// writeFailAfterConn wraps a real net.Conn (so Read/deadlines/Close
+// behave exactly as production code expects) but makes every Write
+// call after the first succeedWrites calls fail deterministically —
+// used to exercise a specific downstream reply-write failure branch
+// without depending on an unreproducible connection-reset race.
+type writeFailAfterConn struct {
+	net.Conn
+	succeedWrites int
+	writeCount    int
+}
+
+func (c *writeFailAfterConn) Write(p []byte) (int, error) {
+	c.writeCount++
+	if c.writeCount > c.succeedWrites {
+		return 0, fmt.Errorf("simulated write failure")
+	}
+	return c.Conn.Write(p)
+}
+
+// pipeConnDrainingOtherEnd returns one end of a net.Pipe(), with a
+// goroutine continuously discarding from the other end so writes on
+// the returned end never block waiting for a reader.
+func pipeConnDrainingOtherEnd(t *testing.T) net.Conn {
+	t.Helper()
+	a, b := net.Pipe()
+	go io.Copy(io.Discard, b)
+	t.Cleanup(func() { a.Close(); b.Close() })
+	return a
+}
+
+// TestServeSOCKS5_ReturnsWithoutRelayingWhenSuccessReplyWriteFails
+// closes a gap the original audit left untested: serveSOCKS5's one
+// guarded write (socks5.go:61, `if err := socks5WriteReply(...); err
+// != nil { return }`) now gets a deterministic repro via a synthetic
+// failing Write, instead of relying on a real connection-reset race.
+// If that guard were ever removed, this test would hang (relay()
+// would run on a doomed connection instead of returning), not
+// silently pass.
+func TestServeSOCKS5_ReturnsWithoutRelayingWhenSuccessReplyWriteFails(t *testing.T) {
+	targetAddr, _ := startEchoTarget(t)
+	targetHost, targetPort := splitHostPortInt(t, targetAddr)
+
+	s := mustScope(t, fmt.Sprintf(`
+scope:
+  include:
+    - %s
+`, targetHost))
+
+	auditPath := filepath.Join(t.TempDir(), "audit.jsonl")
+	log, err := audit.Open(auditPath)
+	require.NoError(t, err)
+	t.Cleanup(func() { log.Close() })
+
+	p := &Proxy{Scope: s, Audit: log}
+
+	ip := net.ParseIP(targetHost).To4()
+	require.NotNil(t, ip)
+	req := []byte{socks5Version, 0x01, socks5MethodNoAuth} // greeting: must succeed
+	req = append(req, socks5Version, socks5CmdConnect, 0x00, socks5ATYPIPv4)
+	req = append(req, ip...)
+	portBytes := make([]byte, 2)
+	binary.BigEndian.PutUint16(portBytes, uint16(targetPort))
+	req = append(req, portBytes...)
+
+	conn := &writeFailAfterConn{Conn: pipeConnDrainingOtherEnd(t), succeedWrites: 1} // greeting ack succeeds; the CONNECT success reply does not
+	br := bufio.NewReader(bytes.NewReader(req))
+
+	done := make(chan struct{})
+	go func() {
+		p.serveSOCKS5(conn, br)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("serveSOCKS5 did not return — a failed reply write must not fall through into relay()")
+	}
+}
+
 func httpConnect(t *testing.T, proxyAddr, target string) (net.Conn, int) {
 	t.Helper()
 
@@ -208,6 +290,132 @@ func roundtrip(t *testing.T, conn net.Conn, msg string) {
 	_, err = io.ReadFull(conn, buf)
 	require.NoError(t, err)
 	assert.Equal(t, msg, string(buf))
+}
+
+// socks5ConnectSafe is socks5Connect's goroutine-safe sibling: plain
+// error returns instead of require/t.Fatalf, which is what the
+// concurrency test below actually needs — require/FailNow are
+// documented as unsafe to call from any goroutine other than the
+// test's own, and socks5Connect is called from N worker goroutines
+// there, not the main test goroutine.
+func socks5ConnectSafe(proxyAddr string, target string, port int) (rep byte, err error) {
+	conn, err := net.Dial("tcp", proxyAddr)
+	if err != nil {
+		return 0, err
+	}
+	defer conn.Close()
+
+	if _, err := conn.Write([]byte{socks5Version, 0x01, socks5MethodNoAuth}); err != nil {
+		return 0, err
+	}
+	greet := make([]byte, 2)
+	if _, err := io.ReadFull(conn, greet); err != nil {
+		return 0, err
+	}
+
+	req := append([]byte{socks5Version, socks5CmdConnect, 0x00, socks5ATYPDomain, byte(len(target))}, []byte(target)...)
+	portBytes := make([]byte, 2)
+	binary.BigEndian.PutUint16(portBytes, uint16(port))
+	req = append(req, portBytes...)
+	if _, err := conn.Write(req); err != nil {
+		return 0, err
+	}
+
+	reply := make([]byte, 4)
+	if _, err := io.ReadFull(conn, reply); err != nil {
+		return 0, err
+	}
+	bnd := make([]byte, net.IPv4len+2)
+	if _, err := io.ReadFull(conn, bnd); err != nil {
+		return 0, err
+	}
+	return reply[1], nil
+}
+
+// TestProxy_ConcurrentConnectionsAreIndependentlyCorrect is the
+// regression test for a gap the original code audit flagged: every
+// other test in this file exercises exactly one connection against
+// its own freshly-started Proxy, so nothing had ever actually proven
+// this package's correctness under concurrent load — only code review
+// had. Half the connections target an in-scope address, half an
+// out-of-scope one, fired at the same shared Proxy simultaneously.
+func TestProxy_ConcurrentConnectionsAreIndependentlyCorrect(t *testing.T) {
+	targetAddr, connCount := startEchoTarget(t)
+	targetHost, targetPort := splitHostPortInt(t, targetAddr)
+
+	s := mustScope(t, fmt.Sprintf(`
+scope:
+  include:
+    - %s
+`, targetHost))
+	proxyAddr, decisions := startProxy(t, s, nil)
+
+	const n = 40
+
+	// decisions is only buffered to 16 (startProxy's fixed size), and
+	// each server-side connection handler must send its Decision there
+	// (via p.notify, before replying to its client — see proxy.go's
+	// connect/handleConn) before that client's socks5ConnectSafe call
+	// can return. With n=40 in flight at once, draining decisions only
+	// after wg.Wait() would deadlock: the channel fills, server-side
+	// sends block, clients never get replies, wg.Wait() never returns,
+	// and nothing is left to drain the channel. Draining concurrently,
+	// starting before the connection goroutines are even fired, avoids
+	// that entirely.
+	var allowedDecisions, deniedDecisions int32
+	drainDone := make(chan struct{})
+	go func() {
+		defer close(drainDone)
+		for i := 0; i < n; i++ {
+			d := <-decisions
+			if d.Allowed {
+				atomic.AddInt32(&allowedDecisions, 1)
+			} else {
+				atomic.AddInt32(&deniedDecisions, 1)
+			}
+		}
+	}()
+
+	var wg sync.WaitGroup
+	reps := make([]byte, n)
+	errs := make([]error, n)
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			if i%2 == 0 {
+				reps[i], errs[i] = socks5ConnectSafe(proxyAddr, targetHost, targetPort)
+			} else {
+				reps[i], errs[i] = socks5ConnectSafe(proxyAddr, "denied.example", 80)
+			}
+		}(i)
+	}
+	wg.Wait()
+
+	select {
+	case <-drainDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("did not receive all 40 decisions in time")
+	}
+
+	var allowedReplies, deniedReplies int
+	for i := 0; i < n; i++ {
+		require.NoError(t, errs[i], "connection %d", i)
+		switch reps[i] {
+		case socks5ReplySucceeded:
+			allowedReplies++
+		case socks5ReplyNotAllowedByRuleset:
+			deniedReplies++
+		default:
+			t.Fatalf("connection %d: unexpected SOCKS5 reply code %d", i, reps[i])
+		}
+	}
+	assert.Equal(t, n/2, allowedReplies)
+	assert.Equal(t, n/2, deniedReplies)
+
+	assert.Equal(t, int32(n/2), atomic.LoadInt32(&allowedDecisions))
+	assert.Equal(t, int32(n/2), atomic.LoadInt32(&deniedDecisions))
+	assert.Equal(t, int32(n/2), atomic.LoadInt32(connCount), "only the allowed half should have actually dialed the real target")
 }
 
 // --- fake resolver for the DNS-rebinding test ---------------------------
@@ -533,6 +741,35 @@ scope:
 
 	d := <-decisions
 	assert.True(t, d.Allowed, "the decision itself is correctly allowed; only the dial failed")
+}
+
+// TestDial_NilIPReturnsImmediately covers dial's own guard against a
+// nil resolved IP — reachable in practice from connect()'s ModeWarn
+// path, which always dials regardless of Allowed, including when
+// resolution failed entirely and resolvedIP is nil.
+func TestDial_NilIPReturnsImmediately(t *testing.T) {
+	p := &Proxy{}
+	want := scope.Decision{Allowed: false, Reason: "unresolvable"}
+	conn, got := p.dial(nil, "80", want)
+	assert.Nil(t, conn)
+	assert.Equal(t, want, got)
+}
+
+// emptyAnswerResolver simulates a resolver that succeeds with zero
+// addresses — a shape fakeResolver's map-based answers can't produce
+// (it always returns exactly one address or an error), but one a real
+// resolver implementation could legitimately return.
+type emptyAnswerResolver struct{}
+
+func (emptyAnswerResolver) LookupIPAddr(context.Context, string) ([]net.IPAddr, error) {
+	return nil, nil
+}
+
+func TestResolveTarget_ZeroAddressesIsAnError(t *testing.T) {
+	p := &Proxy{Resolver: emptyAnswerResolver{}}
+	_, err := p.resolveTarget("example.test")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no addresses found")
 }
 
 // failingAuditor always errors, proving connect()'s fail-closed

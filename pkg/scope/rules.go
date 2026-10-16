@@ -53,15 +53,10 @@ func parseCIDROrIP(s string) (*net.IPNet, error) {
 	if ip == nil {
 		return nil, fmt.Errorf("%q is not a valid IP address or CIDR", s)
 	}
-	bits := 32
-	if ip.To4() == nil {
-		bits = 128
+	if v4 := ip.To4(); v4 != nil {
+		return &net.IPNet{IP: v4, Mask: net.CIDRMask(32, 32)}, nil
 	}
-	_, ipnet, err := net.ParseCIDR(fmt.Sprintf("%s/%d", ip.String(), bits))
-	if err != nil {
-		return nil, fmt.Errorf("%q is not a valid IP address: %w", s, err)
-	}
-	return ipnet, nil
+	return &net.IPNet{IP: ip, Mask: net.CIDRMask(128, 128)}, nil
 }
 
 // cidrError turns the stdlib's generic "invalid CIDR address" error

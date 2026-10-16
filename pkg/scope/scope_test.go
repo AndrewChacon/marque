@@ -460,6 +460,34 @@ scope:
 `,
 			wantErrContains: "at least one",
 		},
+		{
+			// Every other malformed-entry case above puts the bad
+			// value in include; nothing previously exercised the
+			// identical validation on an exclude entry.
+			name: "invalid exclude entry",
+			doc: `
+engagement:
+  name: x
+  start: 2026-01-01T00:00:00Z
+  end: 2026-01-02T00:00:00Z
+scope:
+  include: ["10.0.0.0/8"]
+  exclude: ["10.0.0.0/33"]
+`,
+			wantErrContains: "prefix must be 0-32",
+		},
+		{
+			name: "empty scope entry",
+			doc: `
+engagement:
+  name: x
+  start: 2026-01-01T00:00:00Z
+  end: 2026-01-02T00:00:00Z
+scope:
+  include: ["10.0.0.0/8", "   "]
+`,
+			wantErrContains: "cannot be empty",
+		},
 	}
 
 	for _, tc := range cases {

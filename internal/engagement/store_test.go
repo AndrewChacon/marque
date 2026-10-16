@@ -139,6 +139,38 @@ func TestStore_Add_ErrorsWhenEngagementsPathIsAFile(t *testing.T) {
 	require.Error(t, err)
 }
 
+// TestStore_SetActive_ErrorsWhenWriteFails covers SetActive's second
+// failure point — MkdirAll on Root succeeds, but the write to the
+// active file itself fails — distinct from
+// TestStore_SetActive_ErrorsWhenRootIsAFile above, which only
+// exercises the earlier MkdirAll failure. Making the active file's
+// own path already exist as a directory is what forces WriteFile
+// specifically to fail.
+func TestStore_SetActive_ErrorsWhenWriteFails(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "active"), 0o700))
+
+	s := &Store{Root: root}
+	err := s.SetActive("acme-2026q4")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "setting active engagement")
+}
+
+// TestStore_Add_ErrorsWhenWriteFails is Add's equivalent of the test
+// above: the engagement directory itself is created successfully, but
+// scope.yaml's own path already exists as a directory, so the final
+// WriteFile fails distinctly from the earlier MkdirAll failure
+// TestStore_Add_ErrorsWhenEngagementsPathIsAFile covers.
+func TestStore_Add_ErrorsWhenWriteFails(t *testing.T) {
+	root := t.TempDir()
+	s := &Store{Root: root}
+	require.NoError(t, os.MkdirAll(s.ScopePath("acme-2026q4"), 0o700))
+
+	err := s.Add("acme-2026q4", []byte("doc"))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "writing scope file")
+}
+
 func TestStore_List_ErrorsWhenEngagementsPathIsAFile(t *testing.T) {
 	root := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(root, "engagements"), []byte("x"), 0o600))
