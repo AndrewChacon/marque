@@ -14,7 +14,6 @@ import (
 
 	"github.com/AndrewChacon/red-marque/internal/engagement"
 	"github.com/AndrewChacon/red-marque/internal/proxy"
-	"github.com/AndrewChacon/red-marque/pkg/audit"
 	"github.com/AndrewChacon/red-marque/pkg/scope"
 	"github.com/spf13/cobra"
 )
@@ -124,7 +123,7 @@ func runProxyForeground(cmd *cobra.Command, store *engagement.Store, opts proxyO
 		return err
 	}
 
-	log, err := audit.Open(paths.auditLogPath)
+	log, err := openAuditLogWithHint(paths.auditLogPath)
 	if err != nil {
 		return err
 	}

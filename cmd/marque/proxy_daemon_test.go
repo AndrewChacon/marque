@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/AndrewChacon/red-marque/internal/engagement"
+	"github.com/AndrewChacon/red-marque/pkg/audit"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -187,6 +188,7 @@ func TestDaemonizeProxy_AlreadyRunningRefusesWithoutSpawning(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "already running")
 	assert.Contains(t, err.Error(), "marque proxy stop")
+	assert.Contains(t, err.Error(), "a *different* engagement", "--foreground must not read as a safe way to duplicate the same audit log")
 	assert.False(t, spawned)
 }
 
@@ -294,4 +296,35 @@ func TestRunProxyChild_ExpiredWindowWithoutForceReportsFailure(t *testing.T) {
 	require.Len(t, *sent, 1)
 	assert.False(t, (*sent)[0].OK)
 	assert.Contains(t, (*sent)[0].Error, "--force")
+}
+
+// TestRunProxyChild_AuditLogLockedReportsOverHandshake exercises the
+// exact scenario the whole proxy-backgrounding feature is designed
+// around: something else — realistically another marque proxy
+// already backgrounded against this engagement — already has the
+// audit log open. runProxyChild must report a clear, fail-closed
+// failure over the handshake rather than corrupting anything.
+func TestRunProxyChild_AuditLogLockedReportsOverHandshake(t *testing.T) {
+	sent := withFakeWriteDaemonHandshake(t)
+
+	store := &engagement.Store{Root: t.TempDir()}
+	addTestEngagement(t, store, "acme", time.Now().Add(-time.Hour), time.Now().Add(time.Hour))
+	require.NoError(t, store.SetActive("acme"))
+
+	held, err := audit.Open(store.AuditPath("acme"))
+	require.NoError(t, err)
+	defer held.Close()
+
+	cmd := newProxyCmdWithStore(store)
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+
+	err = runProxyChild(cmd, store, proxyOptions{listenAddr: defaultProxyAddr})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "already open for writing")
+	assert.Contains(t, err.Error(), "marque proxy")
+
+	require.Len(t, *sent, 1)
+	assert.False(t, (*sent)[0].OK)
+	assert.Contains(t, (*sent)[0].Error, "already open for writing")
 }

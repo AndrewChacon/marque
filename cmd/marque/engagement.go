@@ -1,10 +1,12 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 
 	"github.com/AndrewChacon/red-marque/internal/engagement"
+	"github.com/AndrewChacon/red-marque/pkg/audit"
 	"github.com/spf13/cobra"
 )
 
@@ -47,6 +49,22 @@ func resolvePaths(scopeFlag, auditFlag string, store *engagement.Store) (resolve
 		auditPath = store.AuditPath(active)
 	}
 	return resolvedPaths{scopePath: store.ScopePath(active), auditLogPath: auditPath, engagement: active}, nil
+}
+
+// openAuditLogWithHint wraps audit.Open with one CLI-specific
+// addition: when the failure is lock contention specifically, append
+// a hint naming the two commands that hold an audit log open for the
+// long haul — pkg/audit has no notion of "marque proxy" or "marque
+// run," so it can't give this hint itself.
+func openAuditLogWithHint(path string) (*audit.Log, error) {
+	log, err := audit.Open(path)
+	if err != nil {
+		if errors.Is(err, audit.ErrLocked) {
+			return nil, fmt.Errorf("%w — if `marque proxy` is already running against this engagement, route traffic through it instead of running concurrently, or `marque proxy stop` first", err)
+		}
+		return nil, err
+	}
+	return log, nil
 }
 
 // resolveScopePath is resolvePaths for commands (like validate) that

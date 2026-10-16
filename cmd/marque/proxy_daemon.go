@@ -16,7 +16,6 @@ import (
 
 	"github.com/AndrewChacon/red-marque/internal/engagement"
 	"github.com/AndrewChacon/red-marque/internal/proxy"
-	"github.com/AndrewChacon/red-marque/pkg/audit"
 	"github.com/AndrewChacon/red-marque/pkg/scope"
 	"github.com/spf13/cobra"
 )
@@ -170,7 +169,7 @@ func daemonizeProxy(cmd *cobra.Command, store *engagement.Store, opts proxyOptio
 	}
 	if alive {
 		return fmt.Errorf(
-			"a marque proxy is already running (pid %d, listening on %s, started %s) — `marque proxy stop` to stop it, or `--foreground` to run a second instance anyway",
+			"a marque proxy is already running (pid %d, listening on %s, started %s) — `marque proxy stop` to stop it, or `--foreground` to run a second instance against a *different* engagement (pointing both at the same audit log now fails fast instead of risking corruption)",
 			info.PID, info.ListenAddr, info.StartedAt.Format(time.RFC3339),
 		)
 	}
@@ -221,7 +220,7 @@ func runProxyChild(cmd *cobra.Command, store *engagement.Store, opts proxyOption
 		return reportDaemonFailure(err)
 	}
 
-	log, err := audit.Open(paths.auditLogPath)
+	log, err := openAuditLogWithHint(paths.auditLogPath)
 	if err != nil {
 		return reportDaemonFailure(err)
 	}

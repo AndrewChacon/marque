@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/AndrewChacon/red-marque/internal/engagement"
+	"github.com/AndrewChacon/red-marque/pkg/audit"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -71,4 +72,21 @@ func TestResolveScopePath_DelegatesToResolvePaths(t *testing.T) {
 
 	_, err = resolveScopePath("", store)
 	require.Error(t, err)
+}
+
+func TestOpenAuditLogWithHint_AddsHintOnlyForLockContention(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "audit.jsonl")
+	held, err := audit.Open(path)
+	require.NoError(t, err)
+	defer held.Close()
+
+	_, err = openAuditLogWithHint(path)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "marque proxy")
+}
+
+func TestOpenAuditLogWithHint_PassesThroughOtherErrorsUnchanged(t *testing.T) {
+	_, err := openAuditLogWithHint(filepath.Join(t.TempDir(), "no-such-dir", "audit.jsonl"))
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), "marque proxy")
 }

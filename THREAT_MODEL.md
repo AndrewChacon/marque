@@ -164,6 +164,12 @@ that destination as out of scope. Concretely:
   reason to deny the action it would have logged, not to proceed
   unaudited — an unaudited allow is indistinguishable from no safety net
   at all.
+- A second writer trying to open an audit log that's already open
+  elsewhere is refused immediately (a non-blocking lock check), never
+  allowed to interleave writes with the first or silently corrupt the
+  hash chain — concurrent writers were never a safe configuration for
+  a hash-chained append-only log, and the file itself now enforces
+  single-writer access rather than relying on callers to coordinate.
 
 `warn` and `dry-run` modes are deliberate, explicit exceptions to
 fail-closed carved out for the operator's own diagnostic use (see

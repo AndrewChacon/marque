@@ -12,7 +12,6 @@ import (
 	"syscall"
 
 	"github.com/AndrewChacon/red-marque/internal/engagement"
-	"github.com/AndrewChacon/red-marque/pkg/audit"
 	"github.com/AndrewChacon/red-marque/pkg/scope"
 	"github.com/spf13/cobra"
 )
@@ -44,7 +43,7 @@ func newRunCmdWithStore(injected *engagement.Store) *cobra.Command {
 				return err
 			}
 
-			log, err := audit.Open(paths.auditLogPath)
+			log, err := openAuditLogWithHint(paths.auditLogPath)
 			if err != nil {
 				return err
 			}

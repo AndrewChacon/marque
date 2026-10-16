@@ -20,6 +20,7 @@ import (
 	"io"
 	"os"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/AndrewChacon/red-marque/pkg/scope"
@@ -65,28 +66,52 @@ type Log struct {
 	last string
 }
 
-// Open opens (creating if necessary) the audit log at path. If the
-// file already has entries, Open verifies the entire existing chain
-// (the same check Verify performs) before trusting it — tampering
-// anywhere in the file is caught here, at resume time, rather than
-// only when something later calls Verify explicitly. An unreadable
-// final entry with nothing valid after it is reported distinctly from
-// tampering (it's consistent with a crash mid-write), but Open still
-// fails closed either way: it never resumes logging onto a chain it
-// hasn't fully verified.
+// ErrLocked indicates the audit log at a given path is already open
+// for writing — by this process or (far more commonly) a separate one
+// entirely. Exactly one writer may hold a given audit log open at a
+// time; this is what enforces that, instead of leaving two writers to
+// race and silently interleave raw writes or each track an
+// independent, stale view of the chain's last hash onto a file
+// neither has exclusive visibility into.
+var ErrLocked = errors.New("audit log is already open for writing by another process")
+
+// Open opens (creating if necessary) the audit log at path, taking an
+// exclusive, non-blocking lock on it for as long as the returned *Log
+// stays open: at most one writer may hold a given audit log open at a
+// time. A second Open while the first is still open fails immediately
+// with an error wrapping ErrLocked — refuse fast, never wait your
+// turn or, worse, let two writers interleave onto a file neither has
+// exclusive visibility into. The lock releases automatically when
+// Close is called, or when the holding process exits for any reason
+// including a crash (flock(2) semantics) — nothing else needs to
+// clean it up.
+//
+// If the file already has entries, Open verifies the entire existing
+// chain (the same check Verify performs) before trusting it —
+// tampering anywhere in the file is caught here, at resume time,
+// rather than only when something later calls Verify explicitly. An
+// unreadable final entry with nothing valid after it is reported
+// distinctly from tampering (it's consistent with a crash mid-write),
+// but Open still fails closed either way: it never resumes logging
+// onto a chain it hasn't fully verified.
 func Open(path string) (*Log, error) {
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0o600)
 	if err != nil {
 		return nil, fmt.Errorf("opening audit log: %w", err)
 	}
+
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		f.Close()
+		if errors.Is(err, syscall.EWOULDBLOCK) || errors.Is(err, syscall.EAGAIN) {
+			return nil, fmt.Errorf("opening audit log %s: %w", path, ErrLocked)
+		}
+		return nil, fmt.Errorf("locking audit log: %w", err)
+	}
+
 	last, err := lastHash(f)
 	if err != nil {
-		f.Close()
+		f.Close() // also releases the flock acquired above
 		return nil, err
-	}
-	if _, err := f.Seek(0, io.SeekEnd); err != nil {
-		f.Close()
-		return nil, fmt.Errorf("seeking audit log: %w", err)
 	}
 	return &Log{f: f, last: last}, nil
 }
@@ -215,7 +240,11 @@ func (l *Log) Log(d scope.Decision) error {
 	return nil
 }
 
-// Close closes the underlying file.
+// Close closes the underlying file, which also releases the exclusive
+// lock Open took out — flock(2) releases a lock once every file
+// descriptor referring to the locked open file description is closed,
+// which happens implicitly on process exit (including a crash), so an
+// abnormal exit never leaves the log stuck "locked."
 func (l *Log) Close() error {
 	l.mu.Lock()
 	defer l.mu.Unlock()

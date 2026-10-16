@@ -2,9 +2,11 @@ package audit
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/AndrewChacon/red-marque/pkg/scope"
@@ -234,6 +236,84 @@ func TestOpen_DetectsTamperingBeforeTheLastEntry(t *testing.T) {
 func TestOpen_InvalidPath(t *testing.T) {
 	_, err := Open(filepath.Join(t.TempDir(), "no-such-dir", "audit.jsonl"))
 	require.Error(t, err)
+	assert.False(t, errors.Is(err, ErrLocked), "a missing-directory failure must not be mistaken for lock contention")
+}
+
+func TestOpen_RefusesSecondOpenWhileFirstIsOpen(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "audit.jsonl")
+	l1, err := Open(path)
+	require.NoError(t, err)
+	defer l1.Close()
+
+	_, err = Open(path)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrLocked)
+}
+
+func TestOpen_SucceedsOnceFirstLogCloses(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "audit.jsonl")
+	l1, err := Open(path)
+	require.NoError(t, err)
+	require.NoError(t, l1.Close())
+
+	l2, err := Open(path)
+	require.NoError(t, err)
+	require.NoError(t, l2.Close())
+}
+
+// TestOpen_ConcurrentAttemptsOnlyOneWriterWins is the direct
+// regression test for the original bug: two (or more) processes
+// opening the same audit log concurrently used to interleave raw
+// writes (no O_APPEND) and each track a stale, process-local "last
+// hash" (no cross-process coordination), corrupting the chain. Now
+// exactly one Open() wins the lock; everyone else fails immediately
+// with ErrLocked instead of writing anything, so there's no second
+// writer left to corrupt the file. In-process goroutines rather than
+// real subprocesses — flock contends on the open file description,
+// not process identity, so this exercises the identical kernel code
+// path the original two-process repro hit, without subprocess
+// flakiness.
+func TestOpen_ConcurrentAttemptsOnlyOneWriterWins(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "audit.jsonl")
+
+	const attempts = 20
+	var wg sync.WaitGroup
+	winners := make(chan *Log, attempts)
+	losers := make(chan error, attempts)
+
+	for i := 0; i < attempts; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			l, err := Open(path)
+			if err != nil {
+				losers <- err
+				return
+			}
+			winners <- l
+		}()
+	}
+	wg.Wait()
+	close(winners)
+	close(losers)
+
+	var opened []*Log
+	for l := range winners {
+		opened = append(opened, l)
+	}
+	require.Len(t, opened, 1, "exactly one concurrent Open() must win the exclusive lock")
+
+	for i := 0; i < 50; i++ {
+		require.NoError(t, opened[0].Log(decision(true, "10.0.0.1")))
+	}
+	require.NoError(t, opened[0].Close())
+
+	for err := range losers {
+		assert.ErrorIs(t, err, ErrLocked)
+	}
+
+	assert.NoError(t, Verify(path))
+	assert.Len(t, readLines(t, path), 50)
 }
 
 func TestOpen_RejectsOversizedLine(t *testing.T) {

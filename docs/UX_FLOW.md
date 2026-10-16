@@ -109,6 +109,19 @@ scripting, containers, or anyone who specifically wants it.
   the first try
 - Or skip proxy setup entirely: `marque run -- nmap -sV target`
 
+**A note on running `marque proxy` and `marque run` together.** `marque
+proxy` backgrounding by default means it's easy to end up with both
+running against the same engagement in the same terminal session. Each
+needs the audit log open exclusively while it's actually writing to
+it — `marque proxy` holds it open continuously in the background, so a
+`marque run` invoked against that same engagement while the proxy is
+up will see `audit log is already open for writing by another process`
+and refuse, by design, rather than risk two writers corrupting the
+shared decision log. This is intentional protection, not a bug: pick
+one path per engagement at a time — route that traffic through the
+already-running proxy, or `marque proxy stop` first if you specifically
+want to use `marque run` instead.
+
 **7. Mid-engagement scope change** (routine — clients add/remove hosts) —
 edit the scope file, `marque proxy` hot-reloads on file change (or
 `marque reload`) without restarting and breaking audit log continuity.

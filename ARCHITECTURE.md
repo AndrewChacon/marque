@@ -220,6 +220,8 @@ type Entry struct {
 func Open(path string) (*Log, error)
 func (l *Log) Log(d scope.Decision) error
 func Verify(path string) error // walks the chain, returns the first broken link, if any
+
+var ErrLocked error // wraps the error Open returns when another writer already holds the log open
 ```
 
 Format is newline-delimited JSON (one `Entry` per line) — human-greppable,
@@ -227,6 +229,19 @@ diffable, and doesn't need a YAML dependency in a package whose whole
 job is being as dependency-light as the thing it's chained to.
 `pkg/audit` depends on `pkg/scope` only for the `Decision` type it logs;
 nothing flows the other direction.
+
+`Open` takes an exclusive, non-blocking OS-level lock (`flock(2)`) on
+the file for as long as the returned `*Log` stays open — at most one
+writer, one process, one `*Log`, may hold a given audit log open at a
+time. A second `Open` call on the same path while the first is still
+open fails immediately with an error wrapping `ErrLocked`, rather than
+blocking or — the actual bug this replaced — letting two writers
+interleave raw appends and each track an independent, stale view of
+the chain's last hash. The lock releases automatically on `Close`,
+including on an abnormal process exit. This is a real guarantee a
+third-party importer of this library can depend on, not an
+implementation detail: coordinate writers by relying on this, not by
+adding your own external locking on top of it.
 
 "Tamper-evident, not tamper-proof," stated plainly in the package doc
 comment, not just in `THREAT_MODEL.md` — anyone importing this package
