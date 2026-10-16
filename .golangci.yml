@@ -38,7 +38,7 @@ linters:
       # os.Open/os.ReadFile/os.OpenFile call with a non-literal path —
       # which describes this project's entire job. scope.Load and
       # audit.Open are *designed* to take an operator-supplied path;
-      # THREAT_MODEL.md already states plainly that a scope file is
+      # docs/THREAT_MODEL.md already states plainly that a scope file is
       # trusted, operator-authored input, not adversarial data from a
       # third party. There's no path in this codebase where G304 would
       # be catching something real.

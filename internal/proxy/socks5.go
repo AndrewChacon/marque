@@ -67,7 +67,7 @@ func (p *Proxy) serveSOCKS5(conn net.Conn, br *bufio.Reader) {
 // socks5Greeting reads the client's method-negotiation message and
 // replies, accepting only the no-auth method. This is a local
 // safety-net tool, not a multi-tenant gateway — authentication isn't
-// the point (see THREAT_MODEL.md).
+// the point (see docs/THREAT_MODEL.md).
 func socks5Greeting(r *bufio.Reader, w io.Writer) error {
 	header := make([]byte, 2)
 	if _, err := io.ReadFull(r, header); err != nil {

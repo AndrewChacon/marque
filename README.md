@@ -44,7 +44,7 @@ a sandbox that defeats the tester.
 - Tamper-*proof* storage — the audit log is tamper-*evident* only.
 
 Full reasoning, trust boundaries, and the complete in-scope/out-of-scope
-list: [THREAT_MODEL.md](THREAT_MODEL.md).
+list: [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md).
 
 ## Install
 
@@ -178,8 +178,8 @@ if !d.Allowed {
 
 See [`examples/embedding`](examples/embedding) for a complete,
 standalone, runnable example with no proxy or CLI involved, and
-[ARCHITECTURE.md](ARCHITECTURE.md) for the full package layout and
-public API.
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full package
+layout and public API.
 
 ## Prior art
 
@@ -200,12 +200,12 @@ version of it internally.
 
 ## Documentation
 
-- [ARCHITECTURE.md](ARCHITECTURE.md) — package layout, public API, dependency rationale
-- [THREAT_MODEL.md](THREAT_MODEL.md) — adversary model, in/out of scope, fail-closed semantics
-- [CHANGELOG.md](CHANGELOG.md) — notable changes, Keep a Changelog format
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — package layout, public API, dependency rationale
+- [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) — adversary model, in/out of scope, fail-closed semantics
+- [docs/CHANGELOG.md](docs/CHANGELOG.md) — notable changes, Keep a Changelog format
 - [docs/UX_FLOW.md](docs/UX_FLOW.md) — full CLI flow, single- and multi-engagement
 - [docs/stages](docs/stages) — build history: what was implemented at each stage and why
-- [CONTRIBUTING.md](CONTRIBUTING.md) — local dev setup, running tests/lint, code style
+- [.github/CONTRIBUTING.md](.github/CONTRIBUTING.md) — local dev setup, running tests/lint, code style
 
 ## Lawful use
 

@@ -66,7 +66,7 @@ jobs:
       - name: Coverage gate (pkg/scope, pkg/audit >= 85%)
         # Scoped to the two public packages specifically, not a
         # repo-wide average that would let the core hide behind
-        # well-tested CLI wiring — see ARCHITECTURE.md's Testing
+        # well-tested CLI wiring — see docs/ARCHITECTURE.md's Testing
         # strategy section.
         run: |
           go test -coverprofile=coverage.out ./pkg/scope/... ./pkg/audit/...

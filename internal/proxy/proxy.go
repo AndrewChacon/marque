@@ -2,7 +2,7 @@
 // engagement scope on every connection it relays. It contains no
 // scope-matching or audit-logging logic of its own — every decision
 // is one of pkg/scope's Check, CheckHost, or CheckResolvedIP methods,
-// every record is pkg/audit.Log. See THREAT_MODEL.md: this is a
+// every record is pkg/audit.Log. See docs/THREAT_MODEL.md: this is a
 // safety net for traffic routed through it, not a sandbox — a tool
 // that bypasses the proxy entirely is invisible to it.
 package proxy
@@ -125,7 +125,7 @@ func (p *Proxy) resolveTarget(host string) (net.IP, error) {
 	return addrs[0].IP, nil
 }
 
-// decide is the DNS-rebinding close described in THREAT_MODEL.md: a
+// decide is the DNS-rebinding close described in docs/THREAT_MODEL.md: a
 // hostname-based decision and the IP it actually resolves to are not
 // guaranteed to agree, so a hostname that passes CheckHost still has
 // its resolved address re-checked with CheckResolvedIP before
@@ -185,7 +185,7 @@ func (p *Proxy) notify(d scope.Decision) {
 // it re-resolve independently, silently defeating the check above.
 //
 // A logging failure is a hard deny no Mode can override — per
-// THREAT_MODEL.md, an unaudited allow is indistinguishable from no
+// docs/THREAT_MODEL.md, an unaudited allow is indistinguishable from no
 // safety net at all.
 func (p *Proxy) connect(host, port string) (net.Conn, scope.Decision) {
 	resolvedIP, resolveErr := p.resolveTarget(host)

@@ -80,7 +80,7 @@ scope:
 }
 
 // TestCheck_ExcludeAlwaysWinsRegardlessOfSpecificity locks in the
-// confirmed design decision in ARCHITECTURE.md: exclude wins on list
+// confirmed design decision in docs/ARCHITECTURE.md: exclude wins on list
 // membership alone, not on which rule is more specific. A broad
 // exclude swallows a narrower include sitting inside it.
 func TestCheck_ExcludeAlwaysWinsRegardlessOfSpecificity(t *testing.T) {

@@ -6,7 +6,7 @@
 // write access to the log file from regenerating a self-consistent
 // chain from scratch — that would require external append-only
 // storage or remote signing, which is out of scope here. See
-// THREAT_MODEL.md.
+// docs/THREAT_MODEL.md.
 package audit
 
 import (
@@ -216,7 +216,7 @@ func lastHash(f *os.File) (string, error) {
 // An error here means the entry was not durably recorded — callers
 // that treat "allowed" as meaning "allowed and audited" must deny the
 // underlying action when Log returns an error, per the fail-closed
-// principle in THREAT_MODEL.md: an unaudited allow is indistinguishable
+// principle in docs/THREAT_MODEL.md: an unaudited allow is indistinguishable
 // from no safety net at all.
 func (l *Log) Log(d scope.Decision) error {
 	l.mu.Lock()

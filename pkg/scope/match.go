@@ -92,7 +92,7 @@ func (s *Scope) CheckHost(host string) Decision {
 // rules. Calling this is required, not optional, for any consumer
 // about to connect to that address; see CheckHost's doc for the full
 // contract. This is the DNS-rebinding close described in
-// THREAT_MODEL.md: a hostname check and the IP it eventually resolves
+// docs/THREAT_MODEL.md: a hostname check and the IP it eventually resolves
 // to are not guaranteed to agree, so the resolved address gets a
 // second look before anything connects to it.
 //

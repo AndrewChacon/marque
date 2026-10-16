@@ -4,7 +4,7 @@
 
 `pkg/scope` and `pkg/audit` are the correctness-critical core — real
 public API other tools import directly, not just consumed through
-this CLI (see [ARCHITECTURE.md](ARCHITECTURE.md)). Changes there get
+this CLI (see [ARCHITECTURE.md](../docs/ARCHITECTURE.md)). Changes there get
 held to a higher bar than `cmd/marque`'s CLI wiring. If a change
 touches the scope-file format or a fail-closed guarantee, open an
 issue describing the change before sending a PR — those are
@@ -44,7 +44,7 @@ golangci-lint run
 ```
 
 Coverage on `pkg/scope` and `pkg/audit` specifically is held to ≥85%
-(not a repo-wide average — see `ARCHITECTURE.md`'s Testing strategy
+(not a repo-wide average — see `docs/ARCHITECTURE.md`'s Testing strategy
 section):
 
 ```bash
