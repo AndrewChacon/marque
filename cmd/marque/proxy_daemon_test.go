@@ -350,10 +350,14 @@ func TestRunProxyChild_AuditLogLockedReportsOverHandshake(t *testing.T) {
 // shutdown via the same SIGTERM the real detached child listens for.
 // Previously this was only ever verified manually against a real
 // build; this covers it at the `go test` level too. Sends SIGTERM to
-// this test process's own PID, which is safe here specifically
-// because runProxyChild's signal.NotifyContext is registered (and,
-// via its deferred stop(), unregistered) for the exact duration of
-// this one call.
+// this test process's own PID the instant the handshake arrives — safe
+// only because runProxyChild now registers signal.NotifyContext before
+// sending that handshake, not after. This test is what originally
+// caught the race when registration lived later (after p.Serve setup):
+// ~20% of runs died with a raw, uncaught "signal: terminated" because
+// the handshake — and this test's SIGTERM in response — could arrive
+// before the handler was installed. See the comment at the
+// registration site in proxy_daemon.go.
 func TestRunProxyChild_HappyPathServesUntilSignaled(t *testing.T) {
 	// A channel, not withFakeWriteDaemonHandshake's plain slice: the
 	// handshake is written from runProxyChild's own goroutine and read

@@ -231,6 +231,23 @@ func runProxyChild(cmd *cobra.Command, store *engagement.Store, opts proxyOption
 		return reportDaemonFailure(fmt.Errorf("listening on %s: %w", opts.listenAddr, err))
 	}
 
+	// Registered here, before the PID file write and handshake below —
+	// not after p.Serve(ln) is reached — so the signal handler is
+	// already active for the entire window in which this process is
+	// externally observable as "up" (PID file on disk, handshake sent
+	// to the parent). A signal arriving before this registration would
+	// hit the OS default disposition and kill the process outright,
+	// bypassing every deferred cleanup (PID file removal included) —
+	// confirmed as a real, if narrow, race: a test sending SIGTERM
+	// immediately upon receiving the handshake reproduced it directly
+	// (~20% of runs) when this registration lived after the handshake.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	go func() {
+		<-ctx.Done()
+		ln.Close()
+	}()
+
 	var bannerBuf bytes.Buffer
 	printProxyBanner(&bannerBuf, s, ln.Addr().String())
 
@@ -266,13 +283,6 @@ func runProxyChild(cmd *cobra.Command, store *engagement.Store, opts proxyOption
 		// audit --tail`/`audit export` are how to see them live or
 		// after the fact.
 	}
-
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-	go func() {
-		<-ctx.Done()
-		ln.Close()
-	}()
 
 	err = p.Serve(ln)
 	if errors.Is(err, net.ErrClosed) {
