@@ -183,7 +183,7 @@ func checkRunTargets(w io.Writer, s *scope.Scope, log auditLogger, args []string
 
 // execCommand replaces the current process (not fork+wait) — the
 // idiomatic shape for a wrapper tool, and fine since this project only
-// targets linux/darwin.
+// targets linux.
 func execCommand(args []string) error {
 	path, err := exec.LookPath(args[0])
 	if err != nil {

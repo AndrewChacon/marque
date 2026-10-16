@@ -156,8 +156,11 @@ v1.0 — none are being engineered around:
   an interface seam added purely for testability — this project
   avoids the latter on principle. See the comment on
   `TestLog_RollsBackOnWriteFailure` in `pkg/audit/audit_test.go`.
-- No Windows support: `marque run` replaces the current process via
-  `syscall.Exec`, which is Unix-only. See `docs/stages/STAGE_4.md`.
+- Linux only, deliberately — not just "no Windows support" because
+  `syscall.Exec` is Unix-only (see `docs/stages/STAGE_4.md`), but
+  macOS too: the only platform this project is built, tested, and
+  released for is Linux, since that's the operator's actual platform.
+  CI and `goreleaser` were narrowed to match after this review.
 
 ## Trust boundaries
 

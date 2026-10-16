@@ -23,8 +23,8 @@ ARCHITECTURE.md's Versioning section).
   targets), `doctor`, `engagement add/use/list/current` (auto-
   activates on the first `add`), `audit --tail`/`export`, and
   `proxychains-config`.
-- Signed, checksummed release binaries for linux/darwin × amd64/arm64
-  via goreleaser and cosign keyless signing.
+- Signed, checksummed release binaries for linux × amd64/arm64 via
+  goreleaser and cosign keyless signing.
 
 ### Security
 

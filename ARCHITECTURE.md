@@ -297,7 +297,8 @@ flag shapes can still evolve post-v1 without a major bump, since
 ## Build & release
 
 Static binaries (`CGO_ENABLED=0`), cross-compiled for
-linux/darwin × amd64/arm64 via `goreleaser`, checksummed and signed.
+linux × amd64/arm64 via `goreleaser`, checksummed and signed. Linux
+only, by deliberate choice — see THREAT_MODEL.md's pre-v1.0 review.
 `gofmt` + `golangci-lint` in CI with zero warnings tolerated on merge.
 No install-time dependency fetching — the binary is the whole artifact.
 
@@ -312,7 +313,7 @@ No install-time dependency fetching — the binary is the whole artifact.
   actual connections, not mocked transport.
 - Golden-file tests for the audit log format, including one that asserts
   the hash chain detectably breaks under tampering.
-- `go test -race` always, in CI, matrixed over Linux/macOS.
+- `go test -race` always, in CI (Linux — the only supported platform).
 - Target ≥85% coverage on `pkg/scope` and `pkg/audit` specifically —
   not a repo-wide average that lets the core hide behind well-tested CLI
   wiring.
